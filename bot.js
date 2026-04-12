@@ -26,12 +26,6 @@ function getZ(text, type) {
     return match ? match[1] : "0";
 }
 
-// ===== hent SteamID =====
-function getSteamID(link) {
-    const match = link.match(/profile\/([^>]+)/);
-    return match ? match[1] : "-";
-}
-
 // ===== parse HIT =====
 function parseHit(text) {
     const match = text.match(/\[(.*?)\]\(<(.*?)>\)\s+got hit by\s+\[(.*?)\]\(<(.*?)>\)\s+\((.*?),\s*([\d.]+)m,\s*([\d.]+)\s*damage,\s*hitzone\s*(\w+)\)/i);
@@ -111,12 +105,12 @@ client.on("messageCreate", async (msg) => {
                 .addFields(
                     {
                         name: "Killer",
-                        value: `[${hit.killerName}](${hit.killerLink})\n${getSteamID(hit.killerLink)}`,
+                        value: `[${hit.killerName}](${hit.killerLink})`,
                         inline: true
                     },
                     {
                         name: "Victim",
-                        value: `[${hit.victimName}](${hit.victimLink})\n${getSteamID(hit.victimLink)}`,
+                        value: `[${hit.victimName}](${hit.victimLink})`,
                         inline: true
                     },
 
@@ -160,12 +154,12 @@ client.on("messageCreate", async (msg) => {
                 .addFields(
                     {
                         name: "Killer",
-                        value: `[${kill.killerName}](${kill.killerLink})\n${getSteamID(kill.killerLink)}`,
+                        value: `[${kill.killerName}](${kill.killerLink})`,
                         inline: true
                     },
                     {
                         name: "Victim",
-                        value: `[${kill.victimName}](${kill.victimLink})\n${getSteamID(kill.victimLink)}`,
+                        value: `[${kill.victimName}](${kill.victimLink})`,
                         inline: true
                     },
 
