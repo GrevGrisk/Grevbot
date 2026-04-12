@@ -26,6 +26,12 @@ function getZ(text, type) {
     return match ? match[1] : "0";
 }
 
+// ===== hent SteamID =====
+function getSteamID(link) {
+    const match = link.match(/profile\/([^>]+)/);
+    return match ? match[1] : "-";
+}
+
 // ===== parse HIT =====
 function parseHit(text) {
     const match = text.match(/\[(.*?)\]\(<(.*?)>\)\s+got hit by\s+\[(.*?)\]\(<(.*?)>\)\s+\((.*?),\s*([\d.]+)m,\s*([\d.]+)\s*damage,\s*hitzone\s*(\w+)\)/i);
@@ -88,12 +94,6 @@ client.on("messageCreate", async (msg) => {
         const hit = parseHit(content);
         const kill = parseKill(content);
 
-        // 🔥 MAP LINK (MED DATA)
-        const shotLink =
-            coordsKiller && coordsVictim
-                ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent((kill?.weapon || hit?.weapon) || "")}&dist=${(kill?.distance || hit?.distance) || ""}`
-                : null;
-
         // ================= HIT =================
         if (hit) {
             lastHit.set(hit.victimName, {
@@ -101,11 +101,24 @@ client.on("messageCreate", async (msg) => {
                 zone: hit.zone
             });
 
+            const shotLink =
+                coordsKiller && coordsVictim
+                    ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(hit.weapon)}&dist=${hit.distance}&dmg=${hit.damage}&hit=${hit.zone}`
+                    : null;
+
             const embed = new EmbedBuilder()
                 .setColor(0x00ff00)
                 .addFields(
-                    { name: "Killer", value: `[${hit.killerName}](${hit.killerLink})`, inline: true },
-                    { name: "Victim", value: `[${hit.victimName}](${hit.victimLink})`, inline: true },
+                    {
+                        name: "Killer",
+                        value: `[${hit.killerName}](${hit.killerLink})\n${getSteamID(hit.killerLink)}`,
+                        inline: true
+                    },
+                    {
+                        name: "Victim",
+                        value: `[${hit.victimName}](${hit.victimLink})\n${getSteamID(hit.victimLink)}`,
+                        inline: true
+                    },
 
                     { name: "Weapon", value: hit.weapon },
                     { name: "Hitzone", value: hit.zone },
@@ -137,11 +150,24 @@ client.on("messageCreate", async (msg) => {
         if (kill) {
             const last = lastHit.get(kill.victimName);
 
+            const shotLink =
+                coordsKiller && coordsVictim
+                    ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(kill.weapon)}&dist=${kill.distance}&dmg=${last?.damage || ""}&hit=${last?.zone || ""}`
+                    : null;
+
             const embed = new EmbedBuilder()
                 .setColor(0xff0000)
                 .addFields(
-                    { name: "Killer", value: `[${kill.killerName}](${kill.killerLink})`, inline: true },
-                    { name: "Victim", value: `[${kill.victimName}](${kill.victimLink})`, inline: true },
+                    {
+                        name: "Killer",
+                        value: `[${kill.killerName}](${kill.killerLink})\n${getSteamID(kill.killerLink)}`,
+                        inline: true
+                    },
+                    {
+                        name: "Victim",
+                        value: `[${kill.victimName}](${kill.victimLink})\n${getSteamID(kill.victimLink)}`,
+                        inline: true
+                    },
 
                     { name: "Weapon", value: kill.weapon },
 
