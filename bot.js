@@ -11,7 +11,7 @@ const client = new Client({
 const TOKEN = process.env.TOKEN;
 const INPUT_CHANNEL_ID = "1483550858099560502";
 const OUTPUT_CHANNEL_ID = "1492666634190454864";
-const ALERT_CHANNEL_ID = "1478757145288900679";
+const ALERT_CHANNEL_ID = "PUTT_ALERT_CHANNEL_ID_HER";
 
 const lastHit = new Map();
 const headshotTracker = new Map();
@@ -114,27 +114,52 @@ client.on("messageCreate", async (msg) => {
         // ================= HIT =================
         if (hit) {
 
-            // 🔥 HEADSHOT ALERT SYSTEM
+            // 🔥 ALERT SYSTEM
             if (hit.zone.toLowerCase() === "head") {
                 const stats = trackHeadshotsAdvanced(hit.killerName);
                 const alertChannel = await client.channels.fetch(ALERT_CHANNEL_ID);
 
+                let level = null;
+                let color = 0xff0000;
+                let message = "";
+
                 if (stats.count5s === 3) {
-                    await alertChannel.send(
-                        `⚠️ [${hit.killerName}](${hit.killerLink}) hit head 3 times within 5 seconds`
-                    );
+                    level = "⚠️";
+                    color = 0xffcc00;
+                    message = `Has hit ${stats.count5s} headshots within 5 seconds`;
                 }
 
                 if (stats.count10s === 5) {
-                    await alertChannel.send(
-                        `🔶 [${hit.killerName}](${hit.killerLink}) hit head 5 times within 10 seconds`
-                    );
+                    level = "🔶";
+                    color = 0xff8800;
+                    message = `Has hit ${stats.count10s} headshots within 10 seconds`;
                 }
 
                 if (stats.count30min === 10) {
-                    await alertChannel.send(
-                        `🔴 [${hit.killerName}](${hit.killerLink}) hit head 10 times within 30 minutes`
-                    );
+                    level = "🔴";
+                    color = 0xff0000;
+                    message = `Has hit ${stats.count30min} headshots within 30 minutes`;
+                }
+
+                if (level) {
+                    const shotLink =
+                        coordsKiller && coordsVictim
+                            ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(hit.weapon)}&dist=${hit.distance}&dmg=${hit.damage}&hit=${hit.zone}`
+                            : null;
+
+                    const alertEmbed = new EmbedBuilder()
+                        .setColor(color)
+                        .setTitle(`${level} Grevbot Alert!`)
+                        .setDescription("Suspicious activity detected !!!")
+                        .addFields(
+                            { name: "Player", value: `[${hit.killerName}](${hit.killerLink})` },
+                            { name: "Activity", value: message },
+                            { name: "Coordinates", value: `${coordsKiller?.x}, ${zKiller}, ${coordsKiller?.y}` },
+                            { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" }
+                        )
+                        .setFooter({ text: "GrevGrisk - Line-of-sight" });
+
+                    await alertChannel.send({ embeds: [alertEmbed] });
                 }
             }
 
