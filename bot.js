@@ -120,5 +120,7 @@ client.on("messageCreate", async (msg) => {
 
 client.login(TOKEN);
 
+require("http").createServer(() => {}).listen(3000);
+
 // 🔥 HOLD BOTEN ONLINE (Railway fix)
 setInterval(() => {}, 1000);
