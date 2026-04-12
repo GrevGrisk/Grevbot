@@ -24,6 +24,15 @@ function getCoords(text, type) {
     };
 }
 
+// ===== hent Z =====
+function getZ(text, type) {
+    const regex = new RegExp(`${type}:.*Z:\\s*([\\d.]+)`);
+    const match = text.match(regex);
+    if (!match) return 0;
+
+    return Math.round(parseFloat(match[1]));
+}
+
 // ===== parse kill =====
 function parseKill(text) {
     const match = text.match(/\[(.*?)\]\(<(.*?)>\) got killed by \[(.*?)\]\(<(.*?)>\) \(([^,]+),\s*([\d.]+)m\)/);
@@ -55,6 +64,10 @@ client.on("messageCreate", async (msg) => {
 
         const coordsVictim = getCoords(content, "Victim");
         const coordsKiller = getCoords(content, "Killer");
+
+        const zVictim = getZ(content, "Victim");
+        const zKiller = getZ(content, "Killer");
+
         const data = parseKill(content);
 
         if (!coordsVictim || !coordsKiller || !data) return;
@@ -95,6 +108,16 @@ client.on("messageCreate", async (msg) => {
                     inline: false
                 },
                 {
+                    name: "Killer Coordinates",
+                    value: `${coordsKiller.x}, ${zKiller}, ${coordsKiller.y}`,
+                    inline: true
+                },
+                {
+                    name: "Victim Coordinates",
+                    value: `${coordsVictim.x}, ${zVictim}, ${coordsVictim.y}`,
+                    inline: true
+                },
+                {
                     name: "Map",
                     value: `[View in map](${shotLink})`,
                     inline: false
@@ -120,7 +143,5 @@ client.on("messageCreate", async (msg) => {
 
 client.login(TOKEN);
 
+// 🔥 holder Railway live
 require("http").createServer(() => {}).listen(3000);
-
-// 🔥 HOLD BOTEN ONLINE (Railway fix)
-setInterval(() => {}, 1000);
