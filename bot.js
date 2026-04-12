@@ -72,7 +72,7 @@ client.on("messageCreate", async (msg) => {
         });
 
         const embed = new EmbedBuilder()
-            .setColor(0xff0000) // 🔴 rød
+            .setColor(0xff0000)
             .addFields(
                 {
                     name: "Killer",
@@ -95,7 +95,7 @@ client.on("messageCreate", async (msg) => {
                     inline: false
                 },
                 {
-                    name: "Maplink",
+                    name: "Map",
                     value: `[View in map](${shotLink})`,
                     inline: false
                 },
@@ -119,3 +119,6 @@ client.on("messageCreate", async (msg) => {
 });
 
 client.login(TOKEN);
+
+// 🔥 HOLD BOTEN ONLINE (Railway fix)
+setInterval(() => {}, 1000);
