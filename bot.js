@@ -15,6 +15,7 @@ const ALERT_CHANNEL_ID = "1478757145288900679";
 
 const lastHit = new Map();
 const headshotTracker = new Map();
+const brainTracker = new Map();
 const recentHits = new Map();
 
 // ===== coords =====
@@ -32,7 +33,6 @@ function getZ(text, type) {
 // ===== store hits =====
 function storeRecentHit(hit) {
     const now = Date.now();
-
     const key = hit.killerName.toLowerCase();
 
     if (!recentHits.has(key)) {
@@ -76,6 +76,24 @@ function trackHeadshotsAdvanced(killerName) {
         count10s: recent30min.filter(t => now - t <= 10000).length,
         count30min: recent30min.length
     };
+}
+
+// ===== brain tracking =====
+function trackBrainHits(killerName) {
+    const now = Date.now();
+    const key = killerName.toLowerCase();
+
+    if (!brainTracker.has(key)) {
+        brainTracker.set(key, []);
+    }
+
+    const hits = brainTracker.get(key);
+    hits.push(now);
+
+    const recent = hits.filter(t => now - t <= 10 * 60 * 1000);
+    brainTracker.set(key, recent);
+
+    return recent.length;
 }
 
 // ===== parse HIT =====
@@ -139,7 +157,7 @@ client.on("messageCreate", async (msg) => {
 
             const victims = storeRecentHit(hit);
 
-            // ===== ALERT =====
+            // ===== HEAD ALERT =====
             if (hit.zone.toLowerCase() === "head") {
                 const stats = trackHeadshotsAdvanced(hit.killerName);
                 const alertChannel = await client.channels.fetch(ALERT_CHANNEL_ID);
@@ -163,7 +181,6 @@ client.on("messageCreate", async (msg) => {
                 }
 
                 if (triggered) {
-
                     const shotLink =
                         coordsKiller && coordsVictim
                             ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(hit.weapon)}&dist=${hit.distance}&dmg=${hit.damage}&hit=${hit.zone}`
@@ -191,7 +208,39 @@ client.on("messageCreate", async (msg) => {
                 }
             }
 
-            // 🔥 FIX: case-insensitive
+            // ===== BRAIN ALERT =====
+            if (hit.zone.toLowerCase() === "brain") {
+                const count = trackBrainHits(hit.killerName);
+                const alertChannel = await client.channels.fetch(ALERT_CHANNEL_ID);
+
+                if (count === 3) {
+                    const shotLink =
+                        coordsKiller && coordsVictim
+                            ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(hit.weapon)}&dist=${hit.distance}&dmg=${hit.damage}&hit=${hit.zone}`
+                            : null;
+
+                    const victimList = victims.map(v =>
+                        `[${v.victim}](${v.link}), ${v.weapon}, ${v.zone}, ${v.distance}m`
+                    ).join("\n");
+
+                    const alertEmbed = new EmbedBuilder()
+                        .setColor(0x9900ff)
+                        .setTitle("🧠 Grevbot Alert!")
+                        .setDescription("Suspicious Activity detected !!!")
+                        .addFields(
+                            { name: "Player", value: `[${hit.killerName}](${hit.killerLink})` },
+                            { name: "Activity", value: `Has hit ${count} brain hits within 10 minutes` },
+                            { name: "Victims and weapons", value: victimList || "-" },
+                            { name: "Killer coordinates", value: `${coordsKiller?.x}, ${zKiller}, ${coordsKiller?.y}` },
+                            { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" },
+                            { name: "Date and time", value: time }
+                        )
+                        .setFooter({ text: "GrevGrisk - Line-of-sight" });
+
+                    await alertChannel.send({ embeds: [alertEmbed] });
+                }
+            }
+
             lastHit.set(hit.victimName.toLowerCase(), {
                 damage: hit.damage,
                 zone: hit.zone
