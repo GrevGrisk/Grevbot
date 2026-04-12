@@ -12,25 +12,25 @@ const TOKEN = process.env.TOKEN;
 const INPUT_CHANNEL_ID = "1483550858099560502";
 const OUTPUT_CHANNEL_ID = "1492666634190454864";
 
-// ===== coords =====
+// ===== coords (FULL PRESISJON) =====
 function getCoords(text, type) {
     const regex = new RegExp(`${type}:\\s*<X:\\s*(-?[\\d.]+),\\s*Y:\\s*(-?[\\d.]+)`);
     const match = text.match(regex);
     if (!match) return null;
 
     return {
-        x: Math.floor(parseFloat(match[1])),
-        y: Math.floor(parseFloat(match[2]))
+        x: parseFloat(match[1]),
+        y: parseFloat(match[2])
     };
 }
 
-// ===== hent Z =====
+// ===== Z (FULL PRESISJON) =====
 function getZ(text, type) {
     const regex = new RegExp(`${type}:.*Z:\\s*([\\d.]+)`);
     const match = text.match(regex);
     if (!match) return 0;
 
-    return Math.round(parseFloat(match[1]));
+    return parseFloat(match[1]);
 }
 
 // ===== parse kill =====
@@ -45,7 +45,7 @@ function parseKill(text) {
         killerName: match[3],
         killerLink: match[4],
         weapon: match[5],
-        dist: Math.round(parseFloat(match[6]))
+        dist: parseFloat(match[6])
     };
 }
 
