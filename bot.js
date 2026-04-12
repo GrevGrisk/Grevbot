@@ -11,8 +11,10 @@ const client = new Client({
 const TOKEN = process.env.TOKEN;
 const INPUT_CHANNEL_ID = "1483550858099560502";
 const OUTPUT_CHANNEL_ID = "1492666634190454864";
+const ALERT_CHANNEL_ID = "PUTT_ALERT_CHANNEL_ID_HER";
 
 const lastHit = new Map();
+const headshotTracker = new Map();
 
 // ===== coords =====
 function getCoords(text, type) {
@@ -24,6 +26,27 @@ function getCoords(text, type) {
 function getZ(text, type) {
     const match = text.match(new RegExp(`${type}:.*Z:\\s*([\\d.]+)`));
     return match ? match[1] : "0";
+}
+
+// ===== advanced headshot tracking =====
+function trackHeadshotsAdvanced(killerName) {
+    const now = Date.now();
+
+    if (!headshotTracker.has(killerName)) {
+        headshotTracker.set(killerName, []);
+    }
+
+    const hits = headshotTracker.get(killerName);
+    hits.push(now);
+
+    const recent30min = hits.filter(t => now - t <= 30 * 60 * 1000);
+    headshotTracker.set(killerName, recent30min);
+
+    return {
+        count5s: recent30min.filter(t => now - t <= 5000).length,
+        count10s: recent30min.filter(t => now - t <= 10000).length,
+        count30min: recent30min.length
+    };
 }
 
 // ===== parse HIT =====
@@ -90,6 +113,31 @@ client.on("messageCreate", async (msg) => {
 
         // ================= HIT =================
         if (hit) {
+
+            // 🔥 HEADSHOT ALERT SYSTEM
+            if (hit.zone.toLowerCase() === "head") {
+                const stats = trackHeadshotsAdvanced(hit.killerName);
+                const alertChannel = await client.channels.fetch(ALERT_CHANNEL_ID);
+
+                if (stats.count5s === 3) {
+                    await alertChannel.send(
+                        `⚠️ [${hit.killerName}](${hit.killerLink}) hit head 3 times within 5 seconds`
+                    );
+                }
+
+                if (stats.count10s === 5) {
+                    await alertChannel.send(
+                        `🔶 [${hit.killerName}](${hit.killerLink}) hit head 5 times within 10 seconds`
+                    );
+                }
+
+                if (stats.count30min === 10) {
+                    await alertChannel.send(
+                        `🔴 [${hit.killerName}](${hit.killerLink}) hit head 10 times within 30 minutes`
+                    );
+                }
+            }
+
             lastHit.set(hit.victimName, {
                 damage: hit.damage,
                 zone: hit.zone
@@ -103,38 +151,17 @@ client.on("messageCreate", async (msg) => {
             const embed = new EmbedBuilder()
                 .setColor(0x00ff00)
                 .addFields(
-                    {
-                        name: "Killer",
-                        value: `[${hit.killerName}](${hit.killerLink})`,
-                        inline: true
-                    },
-                    {
-                        name: "Victim",
-                        value: `[${hit.victimName}](${hit.victimLink})`,
-                        inline: true
-                    },
-
+                    { name: "Killer", value: `[${hit.killerName}](${hit.killerLink})`, inline: true },
+                    { name: "Victim", value: `[${hit.victimName}](${hit.victimLink})`, inline: true },
                     { name: "Weapon", value: hit.weapon },
                     { name: "Hitzone", value: hit.zone },
-
                     { name: "Distance", value: `${hit.distance} m`, inline: true },
                     { name: "Damage", value: `${hit.damage}`, inline: true },
-
-                    {
-                        name: "Killer Coordinates",
-                        value: `${coordsKiller?.x}, ${zKiller}, ${coordsKiller?.y}`,
-                        inline: true
-                    },
-                    {
-                        name: "Victim Coordinates",
-                        value: `${coordsVictim?.x}, ${zVictim}, ${coordsVictim?.y}`,
-                        inline: true
-                    },
-
+                    { name: "Killer Coordinates", value: `${coordsKiller?.x}, ${zKiller}, ${coordsKiller?.y}`, inline: true },
+                    { name: "Victim Coordinates", value: `${coordsVictim?.x}, ${zVictim}, ${coordsVictim?.y}`, inline: true },
                     { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" },
                     { name: "Time", value: `🕒 ${time}` }
-                )
-                .setFooter({ text: "GrevGrisk - Line-of-sight" });
+                );
 
             await outputChannel.send({ embeds: [embed] });
             return;
@@ -152,39 +179,17 @@ client.on("messageCreate", async (msg) => {
             const embed = new EmbedBuilder()
                 .setColor(0xff0000)
                 .addFields(
-                    {
-                        name: "Killer",
-                        value: `[${kill.killerName}](${kill.killerLink})`,
-                        inline: true
-                    },
-                    {
-                        name: "Victim",
-                        value: `[${kill.victimName}](${kill.victimLink})`,
-                        inline: true
-                    },
-
+                    { name: "Killer", value: `[${kill.killerName}](${kill.killerLink})`, inline: true },
+                    { name: "Victim", value: `[${kill.victimName}](${kill.victimLink})`, inline: true },
                     { name: "Weapon", value: kill.weapon },
-
                     { name: "Hitzone", value: last?.zone || "-", inline: true },
                     { name: "Damage", value: last?.damage || "-", inline: true },
-
                     { name: "Distance", value: `${kill.distance} m` },
-
-                    {
-                        name: "Killer Coordinates",
-                        value: `${coordsKiller?.x}, ${zKiller}, ${coordsKiller?.y}`,
-                        inline: true
-                    },
-                    {
-                        name: "Victim Coordinates",
-                        value: `${coordsVictim?.x}, ${zVictim}, ${coordsVictim?.y}`,
-                        inline: true
-                    },
-
+                    { name: "Killer Coordinates", value: `${coordsKiller?.x}, ${zKiller}, ${coordsKiller?.y}`, inline: true },
+                    { name: "Victim Coordinates", value: `${coordsVictim?.x}, ${zVictim}, ${coordsVictim?.y}`, inline: true },
                     { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" },
                     { name: "Time", value: `🕒 ${time}` }
-                )
-                .setFooter({ text: "GrevGrisk - Line-of-sight" });
+                );
 
             await outputChannel.send({ embeds: [embed] });
         }
@@ -195,6 +200,4 @@ client.on("messageCreate", async (msg) => {
 });
 
 client.login(TOKEN);
-
-// holder Railway oppe
 require("http").createServer(() => {}).listen(3000);
