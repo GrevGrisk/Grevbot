@@ -11,7 +11,7 @@ const client = new Client({
 const TOKEN = process.env.TOKEN;
 const INPUT_CHANNEL_ID = "1483550858099560502";
 const OUTPUT_CHANNEL_ID = "1492666634190454864";
-const ALERT_CHANNEL_ID = "PUTT_ALERT_CHANNEL_ID_HER";
+const ALERT_CHANNEL_ID = "1478757145288900679";
 
 const lastHit = new Map();
 const headshotTracker = new Map();
