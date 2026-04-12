@@ -29,15 +29,17 @@ function getZ(text, type) {
     return match ? match[1] : "0";
 }
 
-// ===== store hits for alert =====
+// ===== store hits =====
 function storeRecentHit(hit) {
     const now = Date.now();
 
-    if (!recentHits.has(hit.killerName)) {
-        recentHits.set(hit.killerName, []);
+    const key = hit.killerName.toLowerCase();
+
+    if (!recentHits.has(key)) {
+        recentHits.set(key, []);
     }
 
-    const hits = recentHits.get(hit.killerName);
+    const hits = recentHits.get(key);
 
     hits.push({
         victim: hit.victimName,
@@ -49,7 +51,7 @@ function storeRecentHit(hit) {
     });
 
     const recent = hits.filter(h => now - h.time <= 10000);
-    recentHits.set(hit.killerName, recent);
+    recentHits.set(key, recent);
 
     return recent;
 }
@@ -57,16 +59,17 @@ function storeRecentHit(hit) {
 // ===== headshot tracking =====
 function trackHeadshotsAdvanced(killerName) {
     const now = Date.now();
+    const key = killerName.toLowerCase();
 
-    if (!headshotTracker.has(killerName)) {
-        headshotTracker.set(killerName, []);
+    if (!headshotTracker.has(key)) {
+        headshotTracker.set(key, []);
     }
 
-    const hits = headshotTracker.get(killerName);
+    const hits = headshotTracker.get(key);
     hits.push(now);
 
     const recent30min = hits.filter(t => now - t <= 30 * 60 * 1000);
-    headshotTracker.set(killerName, recent30min);
+    headshotTracker.set(key, recent30min);
 
     return {
         count5s: recent30min.filter(t => now - t <= 5000).length,
@@ -188,7 +191,8 @@ client.on("messageCreate", async (msg) => {
                 }
             }
 
-            lastHit.set(hit.victimName, {
+            // 🔥 FIX: case-insensitive
+            lastHit.set(hit.victimName.toLowerCase(), {
                 damage: hit.damage,
                 zone: hit.zone
             });
@@ -219,11 +223,11 @@ client.on("messageCreate", async (msg) => {
 
         // ================= KILL =================
         if (kill) {
-            const last = lastHit.get(kill.victimName);
+            const last = lastHit.get(kill.victimName.toLowerCase()) || {};
 
             const shotLink =
                 coordsKiller && coordsVictim
-                    ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(kill.weapon)}&dist=${kill.distance}&dmg=${last?.damage || ""}&hit=${last?.zone || ""}`
+                    ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(kill.weapon)}&dist=${kill.distance}&dmg=${last.damage || ""}&hit=${last.zone || ""}`
                     : null;
 
             const embed = new EmbedBuilder()
@@ -232,8 +236,8 @@ client.on("messageCreate", async (msg) => {
                     { name: "Killer", value: `[${kill.killerName}](${kill.killerLink})`, inline: true },
                     { name: "Victim", value: `[${kill.victimName}](${kill.victimLink})`, inline: true },
                     { name: "Weapon", value: kill.weapon },
-                    { name: "Hitzone", value: last?.zone || "-", inline: true },
-                    { name: "Damage", value: last?.damage || "-", inline: true },
+                    { name: "Hitzone", value: last.zone || "-", inline: true },
+                    { name: "Damage", value: last.damage || "-", inline: true },
                     { name: "Distance", value: `${kill.distance} m` },
                     { name: "Killer Coordinates", value: `${coordsKiller?.x}, ${zKiller}, ${coordsKiller?.y}`, inline: true },
                     { name: "Victim Coordinates", value: `${coordsVictim?.x}, ${zVictim}, ${coordsVictim?.y}`, inline: true },
