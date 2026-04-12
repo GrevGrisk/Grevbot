@@ -11,10 +11,11 @@ const client = new Client({
 const TOKEN = process.env.TOKEN;
 const INPUT_CHANNEL_ID = "1483550858099560502";
 const OUTPUT_CHANNEL_ID = "1492666634190454864";
-const ALERT_CHANNEL_ID = "1478757145288900679";
+const ALERT_CHANNEL_ID = "PUTT_ALERT_CHANNEL_ID_HER";
 
 const lastHit = new Map();
 const headshotTracker = new Map();
+const recentHits = new Map();
 
 // ===== coords =====
 function getCoords(text, type) {
@@ -28,7 +29,32 @@ function getZ(text, type) {
     return match ? match[1] : "0";
 }
 
-// ===== advanced headshot tracking =====
+// ===== store hits for alert =====
+function storeRecentHit(hit) {
+    const now = Date.now();
+
+    if (!recentHits.has(hit.killerName)) {
+        recentHits.set(hit.killerName, []);
+    }
+
+    const hits = recentHits.get(hit.killerName);
+
+    hits.push({
+        victim: hit.victimName,
+        link: hit.victimLink,
+        weapon: hit.weapon,
+        zone: hit.zone,
+        distance: hit.distance,
+        time: now
+    });
+
+    const recent = hits.filter(h => now - h.time <= 10000);
+    recentHits.set(hit.killerName, recent);
+
+    return recent;
+}
+
+// ===== headshot tracking =====
 function trackHeadshotsAdvanced(killerName) {
     const now = Date.now();
 
@@ -100,13 +126,7 @@ client.on("messageCreate", async (msg) => {
         const outputChannel = await client.channels.fetch(OUTPUT_CHANNEL_ID);
 
         const now = new Date();
-        const time = now.toLocaleString("no-NO", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit"
-        });
+        const time = now.toLocaleString("no-NO");
 
         const hit = parseHit(content);
         const kill = parseKill(content);
@@ -114,48 +134,53 @@ client.on("messageCreate", async (msg) => {
         // ================= HIT =================
         if (hit) {
 
-            // 🔥 ALERT SYSTEM
+            const victims = storeRecentHit(hit);
+
+            // ===== ALERT =====
             if (hit.zone.toLowerCase() === "head") {
                 const stats = trackHeadshotsAdvanced(hit.killerName);
                 const alertChannel = await client.channels.fetch(ALERT_CHANNEL_ID);
 
-                let level = null;
-                let color = 0xff0000;
+                let triggered = false;
                 let message = "";
 
                 if (stats.count5s === 3) {
-                    level = "⚠️";
-                    color = 0xffcc00;
+                    triggered = true;
                     message = `Has hit ${stats.count5s} headshots within 5 seconds`;
                 }
 
                 if (stats.count10s === 5) {
-                    level = "🔶";
-                    color = 0xff8800;
+                    triggered = true;
                     message = `Has hit ${stats.count10s} headshots within 10 seconds`;
                 }
 
                 if (stats.count30min === 10) {
-                    level = "🔴";
-                    color = 0xff0000;
+                    triggered = true;
                     message = `Has hit ${stats.count30min} headshots within 30 minutes`;
                 }
 
-                if (level) {
+                if (triggered) {
+
                     const shotLink =
                         coordsKiller && coordsVictim
                             ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(hit.weapon)}&dist=${hit.distance}&dmg=${hit.damage}&hit=${hit.zone}`
                             : null;
 
+                    const victimList = victims.map(v =>
+                        `[${v.victim}](${v.link}), ${v.weapon}, ${v.zone}, ${v.distance}m`
+                    ).join("\n");
+
                     const alertEmbed = new EmbedBuilder()
-                        .setColor(color)
-                        .setTitle(`${level} Grevbot Alert!`)
-                        .setDescription("Suspicious activity detected !!!")
+                        .setColor(0xff0000)
+                        .setTitle("Grevbot Alert!")
+                        .setDescription("Suspicious Activity detected !!!")
                         .addFields(
                             { name: "Player", value: `[${hit.killerName}](${hit.killerLink})` },
                             { name: "Activity", value: message },
-                            { name: "Coordinates", value: `${coordsKiller?.x}, ${zKiller}, ${coordsKiller?.y}` },
-                            { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" }
+                            { name: "Victims and weapons", value: victimList || "-" },
+                            { name: "Killer coordinates", value: `${coordsKiller?.x}, ${zKiller}, ${coordsKiller?.y}` },
+                            { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" },
+                            { name: "Date and time", value: time }
                         )
                         .setFooter({ text: "GrevGrisk - Line-of-sight" });
 
