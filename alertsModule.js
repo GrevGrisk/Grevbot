@@ -5,10 +5,15 @@ const headshotTracker = new Map();
 const brainTracker = new Map();
 const recentHits = new Map();
 
+// ===== SAFE NAME =====
+function safeName(name) {
+    return (name || "unknown").toLowerCase();
+}
+
 // ===== store recent hits =====
 function storeRecentHit(hit) {
     const now = Date.now();
-    const key = hit.killerName.toLowerCase();
+    const key = safeName(hit.killerName);
 
     if (!recentHits.has(key)) {
         recentHits.set(key, []);
@@ -17,11 +22,11 @@ function storeRecentHit(hit) {
     const hits = recentHits.get(key);
 
     hits.push({
-        victim: hit.victimName,
+        victim: hit.victimName || "unknown",
         link: hit.victimLink,
-        weapon: hit.weapon,
-        zone: hit.zone,
-        distance: hit.distance,
+        weapon: hit.weapon || "-",
+        zone: hit.zone || "-",
+        distance: hit.distance || "-",
         time: now
     });
 
@@ -34,7 +39,7 @@ function storeRecentHit(hit) {
 // ===== HEAD tracking =====
 function trackHeadshots(killerName) {
     const now = Date.now();
-    const key = killerName.toLowerCase();
+    const key = safeName(killerName);
 
     if (!headshotTracker.has(key)) {
         headshotTracker.set(key, []);
@@ -56,7 +61,7 @@ function trackHeadshots(killerName) {
 // ===== BRAIN tracking =====
 function trackBrain(killerName) {
     const now = Date.now();
-    const key = killerName.toLowerCase();
+    const key = safeName(killerName);
 
     if (!brainTracker.has(key)) {
         brainTracker.set(key, []);
@@ -73,6 +78,7 @@ function trackBrain(killerName) {
 
 // ===== helpers =====
 function formatPlayer(name, link) {
+    if (!name) return "-";
     return link ? `[${name}](${link})` : name;
 }
 
@@ -83,6 +89,8 @@ function formatCoords(coords, z) {
 // ===== MAIN =====
 async function handleAlerts(hit, alertChannel, coordsKiller, coordsVictim, zKiller, time) {
     try {
+        if (!hit || !hit.killerName) return; // 🔥 STOP CRASH
+
         const victims = storeRecentHit(hit);
 
         // ===== HEAD ALERT =====
@@ -110,7 +118,7 @@ async function handleAlerts(hit, alertChannel, coordsKiller, coordsVictim, zKill
             if (triggered) {
                 const shotLink =
                     coordsKiller && coordsVictim
-                        ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(hit.weapon)}&dist=${hit.distance}&dmg=${hit.damage}&hit=${hit.zone}`
+                        ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(hit.weapon || "-")}&dist=${hit.distance || "-"}&dmg=${hit.damage || "-"}&hit=${hit.zone || "-"}`
                         : null;
 
                 const victimList = victims.map(v =>
@@ -129,9 +137,8 @@ async function handleAlerts(hit, alertChannel, coordsKiller, coordsVictim, zKill
                         { name: "Victims and weapons", value: victimList || "-" },
                         { name: "Killer coordinates", value: formatCoords(coordsKiller, zKiller) },
                         { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" },
-                        { name: "Date and time", value: time }
-                    )
-                    .setFooter({ text: "GrevGrisk - Line-of-sight" });
+                        { name: "Date and time", value: time || "-" }
+                    );
 
                 await alertChannel.send({ embeds: [embed] });
             }
@@ -144,7 +151,7 @@ async function handleAlerts(hit, alertChannel, coordsKiller, coordsVictim, zKill
             if (count === 3) {
                 const shotLink =
                     coordsKiller && coordsVictim
-                        ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(hit.weapon)}&dist=${hit.distance}&dmg=${hit.damage}&hit=${hit.zone}`
+                        ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(hit.weapon || "-")}&dist=${hit.distance || "-"}&dmg=${hit.damage || "-"}&hit=${hit.zone || "-"}`
                         : null;
 
                 const victimList = victims.map(v =>
@@ -163,9 +170,8 @@ async function handleAlerts(hit, alertChannel, coordsKiller, coordsVictim, zKill
                         { name: "Victims and weapons", value: victimList || "-" },
                         { name: "Killer coordinates", value: formatCoords(coordsKiller, zKiller) },
                         { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" },
-                        { name: "Date and time", value: time }
-                    )
-                    .setFooter({ text: "GrevGrisk - Line-of-sight" });
+                        { name: "Date and time", value: time || "-" }
+                    );
 
                 await alertChannel.send({ embeds: [embed] });
             }
