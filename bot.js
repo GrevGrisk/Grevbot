@@ -10,7 +10,6 @@ const client = new Client({
 });
 
 const TOKEN = process.env.TOKEN;
-const GUILD_ID = "DIN_SERVER_ID_HER"; // ⚠️ SETT DENNE
 
 const INPUT_CHANNEL_ID = "1483550858099560502";
 const OUTPUT_CHANNEL_ID = "1492666634190454864";
@@ -133,11 +132,9 @@ function parseKill(text) {
     };
 }
 
-// ===== REGISTER COMMAND =====
+// ===== REGISTER COMMANDS (ALL GUILDS) =====
 async function registerCommands() {
     try {
-        const guild = await client.guilds.fetch(GUILD_ID);
-
         const commands = [
             new SlashCommandBuilder()
                 .setName("profile")
@@ -151,11 +148,20 @@ async function registerCommands() {
                 .toJSON()
         ];
 
-        await guild.commands.set(commands);
+        const guilds = await client.guilds.fetch();
 
-        console.log("✅ Slash command registered");
+        for (const [guildId] of guilds.cache) {
+            try {
+                const guild = await client.guilds.fetch(guildId);
+                await guild.commands.set(commands);
+                console.log(`✅ Registered /profile in guild ${guildId}`);
+            } catch (err) {
+                console.log(`❌ Failed in guild ${guildId}`);
+            }
+        }
+
     } catch (err) {
-        console.error("❌ Command error:", err);
+        console.error("❌ Command registration error:", err);
     }
 }
 
