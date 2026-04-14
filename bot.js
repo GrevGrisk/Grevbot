@@ -132,7 +132,7 @@ function parseKill(text) {
     };
 }
 
-// ===== REGISTER COMMANDS (ALL GUILDS) =====
+// ===== REGISTER COMMANDS (ALL GUILDS, STABLE) =====
 async function registerCommands() {
     try {
         const commands = [
@@ -148,17 +148,15 @@ async function registerCommands() {
                 .toJSON()
         ];
 
-        const guilds = await client.guilds.fetch();
-
-        for (const [guildId] of guilds.cache) {
+        // v14: bruk cache direkte (stabilt)
+        client.guilds.cache.forEach(async (guild) => {
             try {
-                const guild = await client.guilds.fetch(guildId);
                 await guild.commands.set(commands);
-                console.log(`✅ Registered /profile in guild ${guildId}`);
+                console.log(`✅ /profile registered in: ${guild.name}`);
             } catch (err) {
-                console.log(`❌ Failed in guild ${guildId}`);
+                console.error(`❌ Failed in ${guild.name}:`, err?.message || err);
             }
-        }
+        });
 
     } catch (err) {
         console.error("❌ Command registration error:", err);
@@ -213,6 +211,9 @@ Right leg: ${stats.right_leg || 0} (${percent(stats.right_leg)}%)`
 
     } catch (err) {
         console.error("Command error:", err);
+        if (!interaction.replied) {
+            await interaction.reply({ content: "Error running command.", ephemeral: true }).catch(() => {});
+        }
     }
 });
 
