@@ -24,11 +24,9 @@ const playerStats = new Map();
 function extractId(link) {
     if (!link) return null;
 
-    // CF Tools (hex id)
     let match = link.match(/profile\/([a-f0-9]+)/i);
     if (match) return match[1];
 
-    // Steam profile
     match = link.match(/steamcommunity\.com\/profiles\/(\d+)/);
     if (match) return match[1];
 
@@ -57,24 +55,47 @@ function percent(count, total) {
     return total === 0 ? "0.0" : ((count / total) * 100).toFixed(1);
 }
 
+// 🔥 FIXED CHART FUNCTION
 function buildChart(stats) {
-    return `https://quickchart.io/chart?c={
-        type:'pie',
-        data:{
-            labels:['Brain','Head','Torso','Left arm','Right arm','Left leg','Right leg'],
-            datasets:[{
-                data:[
-                    ${stats.brain},
-                    ${stats.head},
-                    ${stats.torso},
-                    ${stats.left_arm},
-                    ${stats.right_arm},
-                    ${stats.left_leg},
-                    ${stats.right_leg}
+    const config = {
+        type: 'pie',
+        data: {
+            labels: [
+                'Brain',
+                'Head',
+                'Torso',
+                'Left arm',
+                'Right arm',
+                'Left leg',
+                'Right leg'
+            ],
+            datasets: [{
+                data: [
+                    stats.brain || 0,
+                    stats.head || 0,
+                    stats.torso || 0,
+                    stats.left_arm || 0,
+                    stats.right_arm || 0,
+                    stats.left_leg || 0,
+                    stats.right_leg || 0
+                ],
+                backgroundColor: [
+                    '#ff0000',
+                    '#ff6666',
+                    '#ffaa00',
+                    '#00aaff',
+                    '#0088cc',
+                    '#66ff66',
+                    '#33cc33'
                 ]
             }]
         }
-    }`;
+    };
+
+    const encoded = encodeURIComponent(JSON.stringify(config));
+
+    // cache-buster viktig for Discord
+    return `https://quickchart.io/chart?c=${encoded}&t=${Date.now()}`;
 }
 
 // ===== default stats =====
