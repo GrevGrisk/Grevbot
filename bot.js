@@ -42,16 +42,24 @@ function getZ(text, type) {
     return match ? match[1] : "0";
 }
 
-// ===== parse HIT =====
+// ===== FIXED parse HIT =====
 function parseHit(text) {
     const match = text.match(/(.+?) got hit by (.+?) \((.+?),\s*([\d.]+)m,\s*([\d.]+)\s*damage,\s*hitzone\s*(\w+)\)/i);
     if (!match) return null;
 
+    const rawVictim = match[1].trim();
+    const rawKiller = match[2].trim();
+
+    const victimMatch = rawVictim.match(/\[(.*?)\]\(<(.*?)>\)/);
+    const killerMatch = rawKiller.match(/\[(.*?)\]\(<(.*?)>\)/);
+
     return {
-        victimName: match[1].trim(),
-        victimLink: null,
-        killerName: match[2].trim(),
-        killerLink: null,
+        victimName: victimMatch ? victimMatch[1] : rawVictim,
+        victimLink: victimMatch ? victimMatch[2] : null,
+
+        killerName: killerMatch ? killerMatch[1] : rawKiller,
+        killerLink: killerMatch ? killerMatch[2] : null,
+
         weapon: match[3].trim(),
         distance: match[4],
         damage: match[5],
@@ -197,7 +205,6 @@ http.createServer((req, res) => {
     console.log("Keep-alive running on port", PORT);
 });
 
-// SAFE ping
 setInterval(() => {
     try {
         http.get(`http://localhost:${PORT}`, () => {})
