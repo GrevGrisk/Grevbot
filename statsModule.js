@@ -23,9 +23,25 @@ const playerStats = new Map();
 // ===== extract CF ID =====
 function extractId(link) {
     if (!link) return null;
-
     const match = link.match(/profile\/([^/]+)/);
     return match ? match[1] : null;
+}
+
+// ===== normalize hitzones =====
+function normalizeZone(zone) {
+    if (!zone) return null;
+
+    zone = zone.toLowerCase();
+
+    if (zone.includes("brain")) return "brain";
+    if (zone.includes("head")) return "head";
+    if (zone.includes("left arm")) return "left_arm";
+    if (zone.includes("right arm")) return "right_arm";
+    if (zone.includes("left leg")) return "left_leg";
+    if (zone.includes("right leg")) return "right_leg";
+    if (zone.includes("torso") || zone.includes("body")) return "torso";
+
+    return null;
 }
 
 // ===== helpers =====
@@ -37,22 +53,45 @@ function buildChart(stats) {
     return `https://quickchart.io/chart?c={
         type:'pie',
         data:{
-            labels:['Brain','Head','Torso','Arms','Legs'],
+            labels:['Brain','Head','Torso','Left arm','Right arm','Left leg','Right leg'],
             datasets:[{
-                data:[${stats.brain},${stats.head},${stats.torso},${stats.arms},${stats.legs}]
+                data:[
+                    ${stats.brain},
+                    ${stats.head},
+                    ${stats.torso},
+                    ${stats.left_arm},
+                    ${stats.right_arm},
+                    ${stats.left_leg},
+                    ${stats.right_leg}
+                ]
             }]
         }
     }`;
 }
 
+// ===== default stats =====
+function createEmptyStats() {
+    return {
+        brain: 0,
+        head: 0,
+        torso: 0,
+        left_arm: 0,
+        right_arm: 0,
+        left_leg: 0,
+        right_leg: 0,
+        total: 0
+    };
+}
+
 // ===== MAIN FUNCTION =====
 async function handleStats(hit, alertChannel, coordsKiller, zKiller) {
     try {
-        // 🔥 bruk CF ID hvis mulig
         const id = extractId(hit.killerLink);
         const key = id ? id : hit.killerName.toLowerCase();
 
         let stats;
+
+        const zone = normalizeZone(hit.zone);
 
         // ===== DB MODE =====
         if (pool) {
@@ -63,38 +102,42 @@ async function handleStats(hit, alertChannel, coordsKiller, zKiller) {
 
             if (res.rows.length === 0) {
                 await pool.query(
-                    "INSERT INTO player_stats (player) VALUES ($1)",
+                    `INSERT INTO player_stats 
+                    (player, brain, head, torso, left_arm, right_arm, left_leg, right_leg, total)
+                    VALUES ($1,0,0,0,0,0,0,0,0)`,
                     [key]
                 );
 
-                stats = {
-                    brain: 0,
-                    head: 0,
-                    torso: 0,
-                    arms: 0,
-                    legs: 0,
-                    total: 0
-                };
+                stats = createEmptyStats();
             } else {
                 stats = res.rows[0];
             }
 
             stats.total++;
 
-            if (stats[hit.zone] !== undefined) {
-                stats[hit.zone]++;
+            if (zone && stats[zone] !== undefined) {
+                stats[zone]++;
             }
 
             await pool.query(
-                `UPDATE player_stats
-                 SET brain=$1, head=$2, torso=$3, arms=$4, legs=$5, total=$6
-                 WHERE player=$7`,
+                `UPDATE player_stats SET
+                    brain=$1,
+                    head=$2,
+                    torso=$3,
+                    left_arm=$4,
+                    right_arm=$5,
+                    left_leg=$6,
+                    right_leg=$7,
+                    total=$8
+                 WHERE player=$9`,
                 [
                     stats.brain,
                     stats.head,
                     stats.torso,
-                    stats.arms,
-                    stats.legs,
+                    stats.left_arm,
+                    stats.right_arm,
+                    stats.left_leg,
+                    stats.right_leg,
                     stats.total,
                     key
                 ]
@@ -104,22 +147,15 @@ async function handleStats(hit, alertChannel, coordsKiller, zKiller) {
         // ===== MEMORY MODE =====
         else {
             if (!playerStats.has(key)) {
-                playerStats.set(key, {
-                    brain: 0,
-                    head: 0,
-                    torso: 0,
-                    arms: 0,
-                    legs: 0,
-                    total: 0
-                });
+                playerStats.set(key, createEmptyStats());
             }
 
             stats = playerStats.get(key);
 
             stats.total++;
 
-            if (stats[hit.zone] !== undefined) {
-                stats[hit.zone]++;
+            if (zone && stats[zone] !== undefined) {
+                stats[zone]++;
             }
         }
 
@@ -141,11 +177,13 @@ async function handleStats(hit, alertChannel, coordsKiller, zKiller) {
                 {
                     name: "Distribution",
                     value:
-`Brain : ${stats.brain} (${percent(stats.brain, stats.total)}%)
-Head  : ${stats.head} (${percent(stats.head, stats.total)}%)
-Torso : ${stats.torso} (${percent(stats.torso, stats.total)}%)
-Arms  : ${stats.arms} (${percent(stats.arms, stats.total)}%)
-Legs  : ${stats.legs} (${percent(stats.legs, stats.total)})`
+`Brain: ${stats.brain} (${percent(stats.brain, stats.total)}%)
+Head: ${stats.head} (${percent(stats.head, stats.total)}%)
+Torso: ${stats.torso} (${percent(stats.torso, stats.total)}%)
+Left arm: ${stats.left_arm} (${percent(stats.left_arm, stats.total)}%)
+Right arm: ${stats.right_arm} (${percent(stats.right_arm, stats.total)}%)
+Left leg: ${stats.left_leg} (${percent(stats.left_leg, stats.total)}%)
+Right leg: ${stats.right_leg} (${percent(stats.right_leg, stats.total)})`
                 },
                 {
                     name: "Coordinates",
