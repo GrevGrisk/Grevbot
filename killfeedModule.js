@@ -9,7 +9,7 @@ function formatCoords(coords, z) {
     return coords ? `${coords.x}, ${z}, ${coords.y}` : "-";
 }
 
-// ===== HIT EMBED =====
+// ===== HIT =====
 async function sendHitEmbed({
     outputChannel,
     hit,
@@ -27,23 +27,24 @@ async function sendHitEmbed({
 
         const embed = new EmbedBuilder()
             .setColor(0xff0000)
+            .setTitle("Grevbot Line-of-sight analysis")
             .addFields(
                 { name: "Killer", value: formatPlayer(hit.killerName, hit.killerLink), inline: true },
                 { name: "Victim", value: formatPlayer(hit.victimName, hit.victimLink), inline: true },
 
-                { name: "Weapon", value: hit.weapon, inline: false },
+                { name: "Weapon", value: hit.weapon },
 
-                { name: "Hitzone", value: hit.zone, inline: true },
-                { name: "Damage", value: hit.damage.toString(), inline: true },
-
+                { name: "Hitzone", value: hit.zone || "-", inline: true },
+                { name: "Damage", value: hit.damage ? hit.damage.toString() : "-", inline: true },
                 { name: "Distance", value: `${hit.distance} m`, inline: true },
 
                 { name: "Killer Coordinates", value: formatCoords(coordsKiller, zKiller), inline: true },
                 { name: "Victim Coordinates", value: formatCoords(coordsVictim, zVictim), inline: true },
 
-                { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-", inline: false },
-                { name: "Time", value: `🕒 ${time}`, inline: false }
-            );
+                { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" },
+                { name: "Time", value: `🕒 ${time}` }
+            )
+            .setFooter({ text: "_GrevBot 2026_" });
 
         await outputChannel.send({ embeds: [embed] });
 
@@ -52,11 +53,10 @@ async function sendHitEmbed({
     }
 }
 
-// ===== KILL EMBED =====
+// ===== KILL =====
 async function sendKillEmbed({
     outputChannel,
     kill,
-    last,
     coordsKiller,
     coordsVictim,
     zKiller,
@@ -71,23 +71,22 @@ async function sendKillEmbed({
 
         const embed = new EmbedBuilder()
             .setColor(0x00ff00)
+            .setTitle("Grevbot Line-of-sight analysis")
             .addFields(
                 { name: "Killer", value: formatPlayer(kill.killerName, kill.killerLink), inline: true },
                 { name: "Victim", value: formatPlayer(kill.victimName, kill.victimLink), inline: true },
 
-                { name: "Weapon", value: kill.weapon, inline: false },
+                { name: "Weapon", value: kill.weapon },
 
                 { name: "Distance", value: `${kill.distance} m`, inline: true },
-
-                { name: "Last Hit Zone", value: last.zone || "-", inline: true },
-                { name: "Last Damage", value: last.damage ? last.damage.toString() : "-", inline: true },
 
                 { name: "Killer Coordinates", value: formatCoords(coordsKiller, zKiller), inline: true },
                 { name: "Victim Coordinates", value: formatCoords(coordsVictim, zVictim), inline: true },
 
-                { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-", inline: false },
-                { name: "Time", value: `🕒 ${time}`, inline: false }
-            );
+                { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" },
+                { name: "Time", value: `🕒 ${time}` }
+            )
+            .setFooter({ text: "_GrevBot 2026_" });
 
         await outputChannel.send({ embeds: [embed] });
 
