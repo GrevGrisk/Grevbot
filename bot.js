@@ -10,6 +10,7 @@ process.on("unhandledRejection", (reason) => {
 const { Client, GatewayIntentBits } = require("discord.js");
 const killfeedModule = require("./killfeedModule");
 const alertsModule = require("./alertsModule");
+const statsModule = require("./statsModule");
 
 const client = new Client({
     intents: [
@@ -27,7 +28,6 @@ const ALERT_CHANNEL_ID = "1478757145288900679";
 
 const EXCLUDED_WEAPONS = ["TriDagger"];
 
-// 🔥 nå lagrer vi flere hits per victim
 const lastHit = new Map();
 
 // ===== coords =====
@@ -56,10 +56,8 @@ function parseHit(text) {
     return {
         victimName: victimMatch ? victimMatch[1] : rawVictim,
         victimLink: victimMatch ? victimMatch[2] : null,
-
         killerName: killerMatch ? killerMatch[1] : rawKiller,
         killerLink: killerMatch ? killerMatch[2] : null,
-
         weapon: match[3].trim(),
         distance: match[4],
         damage: match[5],
@@ -81,10 +79,8 @@ function parseKill(text) {
     return {
         victimName: victimMatch ? victimMatch[1] : rawVictim,
         victimLink: victimMatch ? victimMatch[2] : null,
-
         killerName: killerMatch ? killerMatch[1] : rawKiller,
         killerLink: killerMatch ? killerMatch[2] : null,
-
         weapon: match[3].trim(),
         distance: match[4]
     };
@@ -111,17 +107,21 @@ client.on("messageCreate", async (msg) => {
 
         try {
             outputChannel = await client.channels.fetch(OUTPUT_CHANNEL_ID);
-        } catch (err) {}
+        } catch {}
 
         try {
             alertChannel = await client.channels.fetch(ALERT_CHANNEL_ID);
-        } catch (err) {}
+        } catch {}
 
         const now = new Date();
         const time = now.toLocaleString("no-NO");
 
-        const hit = parseHit(content);
-        const kill = parseKill(content);
+        // 🔥 FIX: tydelig hit/kill detection
+        const isHit = content.includes("got hit by");
+        const isKill = content.includes("got killed by");
+
+        const hit = isHit ? parseHit(content) : null;
+        const kill = isKill ? parseKill(content) : null;
 
         // ===== HIT =====
         if (hit) {
@@ -144,7 +144,6 @@ client.on("messageCreate", async (msg) => {
 
             if (arr.length > 5) arr.shift();
 
-            // killfeed alltid
             if (outputChannel) {
                 await killfeedModule.sendHitEmbed({
                     outputChannel,
@@ -157,20 +156,34 @@ client.on("messageCreate", async (msg) => {
                 });
             }
 
-            // alerts filter
             const isFiltered =
                 EXCLUDED_WEAPONS.includes(hit.weapon) ||
                 parseFloat(hit.distance) < 5;
 
             if (!isFiltered && alertChannel) {
-                await alertsModule.handleAlerts(
-                    hit,
-                    alertChannel,
-                    coordsKiller,
-                    coordsVictim,
-                    zKiller,
-                    time
-                );
+                try {
+                    await alertsModule.handleAlerts(
+                        hit,
+                        alertChannel,
+                        coordsKiller,
+                        coordsVictim,
+                        zKiller,
+                        time
+                    );
+                } catch (err) {
+                    console.error("Alerts error:", err);
+                }
+
+                try {
+                    await statsModule.handleStats(
+                        hit,
+                        alertChannel,
+                        coordsKiller,
+                        zKiller
+                    );
+                } catch (err) {
+                    console.error("Stats error:", err);
+                }
             }
 
             return;
@@ -184,13 +197,18 @@ client.on("messageCreate", async (msg) => {
             if (lastHit.has(key)) {
                 const hits = lastHit.get(key);
 
-                const match = hits.find(h =>
-                    parseFloat(h.distance).toFixed(2) === parseFloat(kill.distance).toFixed(2)
-                );
+                let match = null;
+                let smallestDiff = Infinity;
+
+                for (const h of hits) {
+                    const diff = Math.abs(parseFloat(h.distance) - parseFloat(kill.distance));
+                    if (diff < smallestDiff) {
+                        smallestDiff = diff;
+                        match = h;
+                    }
+                }
 
                 last = match || hits[hits.length - 1] || {};
-
-                // rydder etter bruk
                 lastHit.delete(key);
             }
 
@@ -231,7 +249,6 @@ setInterval(() => {
     https.get(PUBLIC_URL, () => {}).on("error", () => {});
 }, 25000);
 
-// DEBUG HEARTBEAT
 setInterval(() => {
     console.log("BOT STILL RUNNING", new Date().toISOString());
 }, 10000);
