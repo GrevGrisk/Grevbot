@@ -1,6 +1,6 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const statsModule = require("./statsModule");
-const killfeedModule = require("./modules/killfeedModule");
+const killfeedModule = require("./killfeedModule");
 
 const client = new Client({
     intents: [
@@ -253,7 +253,6 @@ client.on("messageCreate", async (msg) => {
                 zone: hit.zone
             });
 
-            // 🔥 KILLFEED VIA MODULE
             await killfeedModule.sendHitEmbed({
                 outputChannel,
                 hit,
@@ -277,7 +276,6 @@ client.on("messageCreate", async (msg) => {
         if (kill) {
             const last = lastHit.get(kill.victimName.toLowerCase()) || {};
 
-            // 🔥 KILLFEED VIA MODULE
             await killfeedModule.sendKillEmbed({
                 outputChannel,
                 kill,
