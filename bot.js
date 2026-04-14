@@ -12,7 +12,7 @@ const client = new Client({
 const TOKEN = process.env.TOKEN;
 const INPUT_CHANNEL_ID = "1483550858099560502";
 const OUTPUT_CHANNEL_ID = "1492666634190454864";
-const ALERT_CHANNEL_ID = "PUTT_ALERT_CHANNEL_ID_HER";
+const ALERT_CHANNEL_ID = "1478757145288900679";
 
 const EXCLUDED_WEAPONS = ["TriDagger"];
 
@@ -159,14 +159,6 @@ client.on("messageCreate", async (msg) => {
         // ================= HIT =================
         if (hit) {
 
-            // 🔥 stats module (helt isolert)
-            statsModule.handleStats(
-                hit,
-                alertChannel,
-                coordsKiller,
-                zKiller
-            ).catch(() => {});
-
             // 🔕 filters
             if (EXCLUDED_WEAPONS.includes(hit.weapon)) return;
             if (parseFloat(hit.distance) < 5) return;
@@ -255,6 +247,7 @@ client.on("messageCreate", async (msg) => {
                 }
             }
 
+            // ✅ lastHit ALLTID før embed
             lastHit.set(hit.victimName.toLowerCase(), {
                 damage: hit.damage,
                 zone: hit.zone
@@ -281,6 +274,14 @@ client.on("messageCreate", async (msg) => {
                 );
 
             await outputChannel.send({ embeds: [embed] });
+
+            // 🔥 stats til slutt (helt isolert)
+            (async () => {
+                try {
+                    await statsModule.handleStats(hit, alertChannel, coordsKiller, zKiller);
+                } catch {}
+            })();
+
             return;
         }
 
