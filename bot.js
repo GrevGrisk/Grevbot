@@ -13,6 +13,8 @@ const INPUT_CHANNEL_ID = "1483550858099560502";
 const OUTPUT_CHANNEL_ID = "1492666634190454864";
 const ALERT_CHANNEL_ID = "1478757145288900679";
 
+const EXCLUDED_WEAPONS = ["TriDagger"];
+
 const lastHit = new Map();
 const headshotTracker = new Map();
 const brainTracker = new Map();
@@ -155,6 +157,10 @@ client.on("messageCreate", async (msg) => {
         // ================= HIT =================
         if (hit) {
 
+            // 🔕 filters
+            if (EXCLUDED_WEAPONS.includes(hit.weapon)) return;
+            if (parseFloat(hit.distance) < 5) return;
+
             const victims = storeRecentHit(hit);
 
             // ===== HEAD ALERT =====
@@ -193,7 +199,7 @@ client.on("messageCreate", async (msg) => {
                     const alertEmbed = new EmbedBuilder()
                         .setColor(0xff0000)
                         .setTitle("Grevbot Alert!")
-                        .setDescription("Suspicious Activity detected !!!")
+                        .setDescription("⚠️ Suspicious Activity detected !!! ⚠️")
                         .addFields(
                             { name: "Player", value: `[${hit.killerName}](${hit.killerLink})` },
                             { name: "Activity", value: message },
@@ -226,7 +232,7 @@ client.on("messageCreate", async (msg) => {
                     const alertEmbed = new EmbedBuilder()
                         .setColor(0x9900ff)
                         .setTitle("🧠 Grevbot Alert!")
-                        .setDescription("Suspicious Activity detected !!!")
+                        .setDescription("⚠️ Suspicious Activity detected !!! ⚠️")
                         .addFields(
                             { name: "Player", value: `[${hit.killerName}](${hit.killerLink})` },
                             { name: "Activity", value: `Has hit ${count} brain hits within 10 minutes` },
