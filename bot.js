@@ -27,6 +27,7 @@ const ALERT_CHANNEL_ID = "1478757145288900679";
 
 const EXCLUDED_WEAPONS = ["TriDagger"];
 
+// 🔥 nå lagrer vi flere hits per victim
 const lastHit = new Map();
 
 // ===== coords =====
@@ -110,15 +111,11 @@ client.on("messageCreate", async (msg) => {
 
         try {
             outputChannel = await client.channels.fetch(OUTPUT_CHANNEL_ID);
-        } catch (err) {
-            console.error("Output channel fetch failed:", err);
-        }
+        } catch (err) {}
 
         try {
             alertChannel = await client.channels.fetch(ALERT_CHANNEL_ID);
-        } catch (err) {
-            console.error("Alert channel fetch failed:", err);
-        }
+        } catch (err) {}
 
         const now = new Date();
         const time = now.toLocaleString("no-NO");
@@ -130,46 +127,50 @@ client.on("messageCreate", async (msg) => {
         if (hit) {
             console.log("PARSED HIT:", hit.killerName, hit.zone);
 
-            lastHit.set(hit.victimName.toLowerCase(), {
-                damage: hit.damage,
-                zone: hit.zone
-            });
+            const key = hit.victimName.toLowerCase();
 
-            // ALWAYS killfeed
-            if (outputChannel) {
-                try {
-                    await killfeedModule.sendHitEmbed({
-                        outputChannel,
-                        hit,
-                        coordsKiller,
-                        coordsVictim,
-                        zKiller,
-                        zVictim,
-                        time
-                    });
-                } catch (err) {
-                    console.error("Killfeed error:", err);
-                }
+            if (!lastHit.has(key)) {
+                lastHit.set(key, []);
             }
 
-            // FILTER ONLY FOR ALERTS
+            const arr = lastHit.get(key);
+
+            arr.push({
+                damage: hit.damage,
+                zone: hit.zone,
+                distance: hit.distance,
+                time: Date.now()
+            });
+
+            if (arr.length > 5) arr.shift();
+
+            // killfeed alltid
+            if (outputChannel) {
+                await killfeedModule.sendHitEmbed({
+                    outputChannel,
+                    hit,
+                    coordsKiller,
+                    coordsVictim,
+                    zKiller,
+                    zVictim,
+                    time
+                });
+            }
+
+            // alerts filter
             const isFiltered =
                 EXCLUDED_WEAPONS.includes(hit.weapon) ||
                 parseFloat(hit.distance) < 5;
 
             if (!isFiltered && alertChannel) {
-                try {
-                    await alertsModule.handleAlerts(
-                        hit,
-                        alertChannel,
-                        coordsKiller,
-                        coordsVictim,
-                        zKiller,
-                        time
-                    );
-                } catch (err) {
-                    console.error("Alerts error:", err);
-                }
+                await alertsModule.handleAlerts(
+                    hit,
+                    alertChannel,
+                    coordsKiller,
+                    coordsVictim,
+                    zKiller,
+                    time
+                );
             }
 
             return;
@@ -177,22 +178,32 @@ client.on("messageCreate", async (msg) => {
 
         // ===== KILL =====
         if (kill && outputChannel) {
-            try {
-                const last = lastHit.get(kill.victimName.toLowerCase()) || {};
+            const key = kill.victimName.toLowerCase();
+            let last = {};
 
-                await killfeedModule.sendKillEmbed({
-                    outputChannel,
-                    kill,
-                    last,
-                    coordsKiller,
-                    coordsVictim,
-                    zKiller,
-                    zVictim,
-                    time
-                });
-            } catch (err) {
-                console.error("Kill embed error:", err);
+            if (lastHit.has(key)) {
+                const hits = lastHit.get(key);
+
+                const match = hits.find(h =>
+                    parseFloat(h.distance).toFixed(2) === parseFloat(kill.distance).toFixed(2)
+                );
+
+                last = match || hits[hits.length - 1] || {};
+
+                // rydder etter bruk
+                lastHit.delete(key);
             }
+
+            await killfeedModule.sendKillEmbed({
+                outputChannel,
+                kill,
+                last,
+                coordsKiller,
+                coordsVictim,
+                zKiller,
+                zVictim,
+                time
+            });
         }
 
     } catch (err) {
@@ -217,8 +228,7 @@ http.createServer((req, res) => {
 });
 
 setInterval(() => {
-    https.get(PUBLIC_URL, () => {})
-        .on("error", () => {});
+    https.get(PUBLIC_URL, () => {}).on("error", () => {});
 }, 25000);
 
 // DEBUG HEARTBEAT
