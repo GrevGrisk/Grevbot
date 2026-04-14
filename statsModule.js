@@ -8,7 +8,7 @@ if (process.env.DATABASE_URL) {
     try {
         pool = new Pool({
             connectionString: process.env.DATABASE_URL,
-            ssl: { rejectUnauthorized: false }
+            ssl: false
         });
         console.log("✅ DB connected");
     } catch (err) {
@@ -19,6 +19,14 @@ if (process.env.DATABASE_URL) {
 
 // ===== memory fallback =====
 const playerStats = new Map();
+
+// ===== extract CF ID =====
+function extractId(link) {
+    if (!link) return null;
+
+    const match = link.match(/profile\/([^/]+)/);
+    return match ? match[1] : null;
+}
 
 // ===== helpers =====
 function percent(count, total) {
@@ -40,7 +48,9 @@ function buildChart(stats) {
 // ===== MAIN FUNCTION =====
 async function handleStats(hit, alertChannel, coordsKiller, zKiller) {
     try {
-        const key = hit.killerName.toLowerCase();
+        // 🔥 bruk CF ID hvis mulig
+        const id = extractId(hit.killerLink);
+        const key = id ? id : hit.killerName.toLowerCase();
 
         let stats;
 
