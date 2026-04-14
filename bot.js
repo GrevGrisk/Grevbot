@@ -1,5 +1,6 @@
-const { Client, GatewayIntentBits, EmbedBuilder, SlashCommandBuilder } = require("discord.js");
+const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const statsModule = require("./statsModule");
+const killfeedModule = require("./modules/killfeedModule");
 
 const client = new Client({
     intents: [
@@ -132,92 +133,10 @@ function parseKill(text) {
     };
 }
 
-// ===== REGISTER COMMANDS (ALL GUILDS, STABLE) =====
-async function registerCommands() {
-    try {
-        const commands = [
-            new SlashCommandBuilder()
-                .setName("profile")
-                .setDescription("Show player hitzone stats")
-                .addStringOption(option =>
-                    option
-                        .setName("id")
-                        .setDescription("CF Tools profile ID")
-                        .setRequired(true)
-                )
-                .toJSON()
-        ];
-
-        // v14: bruk cache direkte (stabilt)
-        client.guilds.cache.forEach(async (guild) => {
-            try {
-                await guild.commands.set(commands);
-                console.log(`✅ /profile registered in: ${guild.name}`);
-            } catch (err) {
-                console.error(`❌ Failed in ${guild.name}:`, err?.message || err);
-            }
-        });
-
-    } catch (err) {
-        console.error("❌ Command registration error:", err);
-    }
-}
-
-client.on("clientReady", async () => {
+client.on("clientReady", () => {
     console.log(`Logged in as ${client.user.tag}`);
-    await registerCommands();
 });
 
-// ===== SLASH COMMAND =====
-client.on("interactionCreate", async (interaction) => {
-    try {
-        if (!interaction.isChatInputCommand()) return;
-        if (interaction.commandName !== "profile") return;
-
-        const id = interaction.options.getString("id");
-        const stats = await statsModule.getStatsById(id);
-
-        if (!stats) {
-            return interaction.reply({
-                content: `No stats found for ID: ${id}`,
-                ephemeral: true
-            });
-        }
-
-        const total = Number(stats.total || 0);
-        const percent = (c) => total === 0 ? "0.0" : ((Number(c || 0) / total) * 100).toFixed(1);
-
-        const embed = new EmbedBuilder()
-            .setColor(0x00ffcc)
-            .setTitle("📊 Player Profile")
-            .setDescription(`Stats for ID: ${id}`)
-            .addFields(
-                { name: "Total Hits", value: `${total}` },
-                {
-                    name: "Distribution",
-                    value:
-`Brain: ${stats.brain || 0} (${percent(stats.brain)}%)
-Head: ${stats.head || 0} (${percent(stats.head)}%)
-Torso: ${stats.torso || 0} (${percent(stats.torso)}%)
-Left arm: ${stats.left_arm || 0} (${percent(stats.left_arm)}%)
-Right arm: ${stats.right_arm || 0} (${percent(stats.right_arm)}%)
-Left leg: ${stats.left_leg || 0} (${percent(stats.left_leg)}%)
-Right leg: ${stats.right_leg || 0} (${percent(stats.right_leg)}%)`
-                }
-            )
-            .setImage(statsModule.buildChart(stats));
-
-        await interaction.reply({ embeds: [embed] });
-
-    } catch (err) {
-        console.error("Command error:", err);
-        if (!interaction.replied) {
-            await interaction.reply({ content: "Error running command.", ephemeral: true }).catch(() => {});
-        }
-    }
-});
-
-// ===== ORIGINAL MESSAGE HANDLER (URØRT) =====
 client.on("messageCreate", async (msg) => {
     try {
         if (msg.author.id === client.user.id) return;
@@ -334,27 +253,16 @@ client.on("messageCreate", async (msg) => {
                 zone: hit.zone
             });
 
-            const shotLink =
-                coordsKiller && coordsVictim
-                    ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(hit.weapon)}&dist=${hit.distance}&dmg=${hit.damage}&hit=${hit.zone}`
-                    : null;
-
-            const embed = new EmbedBuilder()
-                .setColor(0x00ff00)
-                .addFields(
-                    { name: "Killer", value: `[${hit.killerName}](${hit.killerLink})`, inline: true },
-                    { name: "Victim", value: `[${hit.victimName}](${hit.victimLink})`, inline: true },
-                    { name: "Weapon", value: hit.weapon },
-                    { name: "Hitzone", value: hit.zone },
-                    { name: "Distance", value: `${hit.distance} m`, inline: true },
-                    { name: "Damage", value: `${hit.damage}`, inline: true },
-                    { name: "Killer Coordinates", value: `${coordsKiller?.x}, ${zKiller}, ${coordsKiller?.y}`, inline: true },
-                    { name: "Victim Coordinates", value: `${coordsVictim?.x}, ${zVictim}, ${coordsVictim?.y}`, inline: true },
-                    { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" },
-                    { name: "Time", value: `🕒 ${time}` }
-                );
-
-            await outputChannel.send({ embeds: [embed] });
+            // 🔥 KILLFEED VIA MODULE
+            await killfeedModule.sendHitEmbed({
+                outputChannel,
+                hit,
+                coordsKiller,
+                coordsVictim,
+                zKiller,
+                zVictim,
+                time
+            });
 
             (async () => {
                 try {
@@ -369,27 +277,17 @@ client.on("messageCreate", async (msg) => {
         if (kill) {
             const last = lastHit.get(kill.victimName.toLowerCase()) || {};
 
-            const shotLink =
-                coordsKiller && coordsVictim
-                    ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(kill.weapon)}&dist=${kill.distance}&dmg=${last.damage || ""}&hit=${last.zone || ""}`
-                    : null;
-
-            const embed = new EmbedBuilder()
-                .setColor(0xff0000)
-                .addFields(
-                    { name: "Killer", value: `[${kill.killerName}](${kill.killerLink})`, inline: true },
-                    { name: "Victim", value: `[${kill.victimName}](${kill.victimLink})`, inline: true },
-                    { name: "Weapon", value: kill.weapon },
-                    { name: "Hitzone", value: last.zone || "-", inline: true },
-                    { name: "Damage", value: last.damage || "-", inline: true },
-                    { name: "Distance", value: `${kill.distance} m` },
-                    { name: "Killer Coordinates", value: `${coordsKiller?.x}, ${zKiller}, ${coordsKiller?.y}`, inline: true },
-                    { name: "Victim Coordinates", value: `${coordsVictim?.x}, ${zVictim}, ${coordsVictim?.y}`, inline: true },
-                    { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" },
-                    { name: "Time", value: `🕒 ${time}` }
-                );
-
-            await outputChannel.send({ embeds: [embed] });
+            // 🔥 KILLFEED VIA MODULE
+            await killfeedModule.sendKillEmbed({
+                outputChannel,
+                kill,
+                last,
+                coordsKiller,
+                coordsVictim,
+                zKiller,
+                zVictim,
+                time
+            });
         }
 
     } catch (err) {
