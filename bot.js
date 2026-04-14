@@ -33,7 +33,7 @@ function getZ(text, type) {
     return match ? match[1] : "0";
 }
 
-// ===== FIXED parse HIT =====
+// ===== parse HIT =====
 function parseHit(text) {
     const match = text.match(/(.+?) got hit by (.+?) \((.+?),\s*([\d.]+)m,\s*([\d.]+)\s*damage,\s*hitzone\s*(\w+)\)/i);
     if (!match) return null;
@@ -90,7 +90,6 @@ client.on("messageCreate", async (msg) => {
         const hit = parseHit(content);
         const kill = parseKill(content);
 
-        // DEBUG
         if (hit) {
             console.log("PARSED HIT:", hit.killerName, hit.zone);
         }
@@ -132,7 +131,9 @@ client.on("messageCreate", async (msg) => {
             (async () => {
                 try {
                     await statsModule.handleStats(hit, alertChannel, coordsKiller, zKiller);
-                } catch {}
+                } catch (err) {
+                    console.error("Stats error:", err);
+                }
             })();
 
             return;
@@ -155,22 +156,30 @@ client.on("messageCreate", async (msg) => {
         }
 
     } catch (err) {
-        console.error("ERROR:", err);
+        console.error("MESSAGE ERROR:", err);
     }
 });
 
 client.login(TOKEN);
 
-// ===== KEEP ALIVE (Railway fix) =====
+// ===== KEEP ALIVE (CRASH-SAFE) =====
 const http = require("http");
 
-// server
-http.createServer((req, res) => {
-    res.writeHead(200);
-    res.end("Bot running");
-}).listen(process.env.PORT || 3000);
+const PORT = process.env.PORT || 3000;
 
-// self ping
+const server = http.createServer((req, res) => {
+    res.writeHead(200);
+    res.end("OK");
+});
+
+server.listen(PORT, () => {
+    console.log("Keep-alive running on port", PORT);
+});
+
+// SAFE self-ping
 setInterval(() => {
-    http.get(`http://localhost:${process.env.PORT || 3000}`);
+    try {
+        http.get(`http://localhost:${PORT}`, () => {})
+            .on("error", () => {});
+    } catch (err) {}
 }, 30000);
