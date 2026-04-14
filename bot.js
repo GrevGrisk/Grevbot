@@ -42,7 +42,7 @@ function getZ(text, type) {
     return match ? match[1] : "0";
 }
 
-// ===== FIXED parse HIT =====
+// ===== parse HIT (CFTOOLS FIXED) =====
 function parseHit(text) {
     const match = text.match(/(.+?) got hit by (.+?) \((.+?),\s*([\d.]+)m,\s*([\d.]+)\s*damage,\s*hitzone\s*(\w+)\)/i);
     if (!match) return null;
@@ -123,67 +123,81 @@ client.on("messageCreate", async (msg) => {
             console.log("PARSED HIT:", hit.killerName, hit.zone);
         }
 
-        // ================= HIT =================
+        // ===== HIT =====
         if (hit) {
 
             if (EXCLUDED_WEAPONS.includes(hit.weapon)) return;
             if (parseFloat(hit.distance) < 5) return;
 
+            // ALERTS SAFE
             if (alertChannel) {
-                await alertsModule.handleAlerts(
-                    hit,
-                    alertChannel,
-                    coordsKiller,
-                    coordsVictim,
-                    zKiller,
-                    time
-                );
+                try {
+                    await alertsModule.handleAlerts(
+                        hit,
+                        alertChannel,
+                        coordsKiller,
+                        coordsVictim,
+                        zKiller,
+                        time
+                    );
+                } catch (err) {
+                    console.error("Alerts error:", err);
+                }
             }
 
+            // LAST HIT
             lastHit.set(hit.victimName.toLowerCase(), {
                 damage: hit.damage,
                 zone: hit.zone
             });
 
+            // KILLFEED SAFE
             if (outputChannel) {
-                await killfeedModule.sendHitEmbed({
+                try {
+                    await killfeedModule.sendHitEmbed({
+                        outputChannel,
+                        hit,
+                        coordsKiller,
+                        coordsVictim,
+                        zKiller,
+                        zVictim,
+                        time
+                    });
+                } catch (err) {
+                    console.error("Killfeed error:", err);
+                }
+            }
+
+            // STATS SAFE
+            if (alertChannel) {
+                try {
+                    await statsModule.handleStats(hit, alertChannel, coordsKiller, zKiller);
+                } catch (err) {
+                    console.error("Stats error:", err);
+                }
+            }
+
+            return;
+        }
+
+        // ===== KILL =====
+        if (kill && outputChannel) {
+            try {
+                const last = lastHit.get(kill.victimName.toLowerCase()) || {};
+
+                await killfeedModule.sendKillEmbed({
                     outputChannel,
-                    hit,
+                    kill,
+                    last,
                     coordsKiller,
                     coordsVictim,
                     zKiller,
                     zVictim,
                     time
                 });
+            } catch (err) {
+                console.error("Kill embed error:", err);
             }
-
-            (async () => {
-                try {
-                    if (alertChannel) {
-                        await statsModule.handleStats(hit, alertChannel, coordsKiller, zKiller);
-                    }
-                } catch (err) {
-                    console.error("Stats error:", err);
-                }
-            })();
-
-            return;
-        }
-
-        // ================= KILL =================
-        if (kill && outputChannel) {
-            const last = lastHit.get(kill.victimName.toLowerCase()) || {};
-
-            await killfeedModule.sendKillEmbed({
-                outputChannel,
-                kill,
-                last,
-                coordsKiller,
-                coordsVictim,
-                zKiller,
-                zVictim,
-                time
-            });
         }
 
     } catch (err) {
@@ -205,6 +219,7 @@ http.createServer((req, res) => {
     console.log("Keep-alive running on port", PORT);
 });
 
+// SAFE self-ping
 setInterval(() => {
     try {
         http.get(`http://localhost:${PORT}`, () => {})
