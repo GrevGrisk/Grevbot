@@ -42,7 +42,7 @@ function getZ(text, type) {
     return match ? match[1] : "0";
 }
 
-// ===== parse HIT (CFTOOLS FIXED) =====
+// ===== parse HIT =====
 function parseHit(text) {
     const match = text.match(/(.+?) got hit by (.+?) \((.+?),\s*([\d.]+)m,\s*([\d.]+)\s*damage,\s*hitzone\s*(\w+)\)/i);
     if (!match) return null;
@@ -72,11 +72,19 @@ function parseKill(text) {
     const match = text.match(/(.+?) got killed by (.+?) \((.+?),\s*([\d.]+)m\)/i);
     if (!match) return null;
 
+    const rawVictim = match[1].trim();
+    const rawKiller = match[2].trim();
+
+    const victimMatch = rawVictim.match(/\[(.*?)\]\(<(.*?)>\)/);
+    const killerMatch = rawKiller.match(/\[(.*?)\]\(<(.*?)>\)/);
+
     return {
-        victimName: match[1].trim(),
-        victimLink: null,
-        killerName: match[2].trim(),
-        killerLink: null,
+        victimName: victimMatch ? victimMatch[1] : rawVictim,
+        victimLink: victimMatch ? victimMatch[2] : null,
+
+        killerName: killerMatch ? killerMatch[1] : rawKiller,
+        killerLink: killerMatch ? killerMatch[2] : null,
+
         weapon: match[3].trim(),
         distance: match[4]
     };
@@ -121,37 +129,14 @@ client.on("messageCreate", async (msg) => {
 
         if (hit) {
             console.log("PARSED HIT:", hit.killerName, hit.zone);
-        }
 
-        // ===== HIT =====
-        if (hit) {
-
-            if (EXCLUDED_WEAPONS.includes(hit.weapon)) return;
-            if (parseFloat(hit.distance) < 5) return;
-
-            // ALERTS SAFE
-            if (alertChannel) {
-                try {
-                    await alertsModule.handleAlerts(
-                        hit,
-                        alertChannel,
-                        coordsKiller,
-                        coordsVictim,
-                        zKiller,
-                        time
-                    );
-                } catch (err) {
-                    console.error("Alerts error:", err);
-                }
-            }
-
-            // LAST HIT
+            // 🔥 ALLTID lagre hit (for konsistens)
             lastHit.set(hit.victimName.toLowerCase(), {
                 damage: hit.damage,
                 zone: hit.zone
             });
 
-            // KILLFEED SAFE
+            // 🔥 ALLTID send killfeed (ingen filter)
             if (outputChannel) {
                 try {
                     await killfeedModule.sendHitEmbed({
@@ -168,10 +153,32 @@ client.on("messageCreate", async (msg) => {
                 }
             }
 
-            // STATS SAFE
-            if (alertChannel) {
+            // 🔥 FILTER KUN FOR ALERTS/STATS
+            const isFiltered =
+                EXCLUDED_WEAPONS.includes(hit.weapon) ||
+                parseFloat(hit.distance) < 5;
+
+            if (!isFiltered && alertChannel) {
                 try {
-                    await statsModule.handleStats(hit, alertChannel, coordsKiller, zKiller);
+                    await alertsModule.handleAlerts(
+                        hit,
+                        alertChannel,
+                        coordsKiller,
+                        coordsVictim,
+                        zKiller,
+                        time
+                    );
+                } catch (err) {
+                    console.error("Alerts error:", err);
+                }
+
+                try {
+                    await statsModule.handleStats(
+                        hit,
+                        alertChannel,
+                        coordsKiller,
+                        zKiller
+                    );
                 } catch (err) {
                     console.error("Stats error:", err);
                 }
@@ -183,12 +190,9 @@ client.on("messageCreate", async (msg) => {
         // ===== KILL =====
         if (kill && outputChannel) {
             try {
-                const last = lastHit.get(kill.victimName.toLowerCase()) || {};
-
                 await killfeedModule.sendKillEmbed({
                     outputChannel,
                     kill,
-                    last,
                     coordsKiller,
                     coordsVictim,
                     zKiller,
@@ -219,7 +223,6 @@ http.createServer((req, res) => {
     console.log("Keep-alive running on port", PORT);
 });
 
-// SAFE self-ping
 setInterval(() => {
     try {
         http.get(`http://localhost:${PORT}`, () => {})
