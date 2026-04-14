@@ -50,17 +50,17 @@ function parseHit(text) {
     };
 }
 
-// ===== parse KILL (urørt) =====
+// ===== parse KILL =====
 function parseKill(text) {
-    const match = text.match(/(.*?) got killed by (.*?) \((.*?),\s*([\d.]+)m\)/i);
+    const match = text.match(/(.+?) got killed by (.+?) \((.+?),\s*([\d.]+)m\)/i);
     if (!match) return null;
 
     return {
-        victimName: match[1],
+        victimName: match[1].trim(),
         victimLink: null,
-        killerName: match[2],
+        killerName: match[2].trim(),
         killerLink: null,
-        weapon: match[3],
+        weapon: match[3].trim(),
         distance: match[4]
     };
 }
@@ -90,7 +90,7 @@ client.on("messageCreate", async (msg) => {
         const hit = parseHit(content);
         const kill = parseKill(content);
 
-        // DEBUG (kan fjernes senere)
+        // DEBUG
         if (hit) {
             console.log("PARSED HIT:", hit.killerName, hit.zone);
         }
@@ -101,7 +101,7 @@ client.on("messageCreate", async (msg) => {
             if (EXCLUDED_WEAPONS.includes(hit.weapon)) return;
             if (parseFloat(hit.distance) < 5) return;
 
-            // 🔥 ALERTS
+            // ALERTS
             await alertsModule.handleAlerts(
                 hit,
                 alertChannel,
@@ -111,13 +111,13 @@ client.on("messageCreate", async (msg) => {
                 time
             );
 
-            // 🔥 last hit
+            // last hit
             lastHit.set(hit.victimName.toLowerCase(), {
                 damage: hit.damage,
                 zone: hit.zone
             });
 
-            // 🔥 killfeed
+            // killfeed
             await killfeedModule.sendHitEmbed({
                 outputChannel,
                 hit,
@@ -128,7 +128,7 @@ client.on("messageCreate", async (msg) => {
                 time
             });
 
-            // 🔥 stats
+            // stats
             (async () => {
                 try {
                     await statsModule.handleStats(hit, alertChannel, coordsKiller, zKiller);
@@ -161,10 +161,16 @@ client.on("messageCreate", async (msg) => {
 
 client.login(TOKEN);
 
-// ===== Railway keep alive =====
+// ===== KEEP ALIVE (Railway fix) =====
 const http = require("http");
 
+// server
 http.createServer((req, res) => {
     res.writeHead(200);
-    res.end("Bot is running");
+    res.end("Bot running");
 }).listen(process.env.PORT || 3000);
+
+// self ping
+setInterval(() => {
+    http.get(`http://localhost:${process.env.PORT || 3000}`);
+}, 30000);
