@@ -1,3 +1,12 @@
+// ===== GLOBAL CRASH HANDLER =====
+process.on("uncaughtException", (err) => {
+    console.error("UNCAUGHT EXCEPTION:", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+    console.error("UNHANDLED REJECTION:", reason);
+});
+
 const { Client, GatewayIntentBits } = require("discord.js");
 const statsModule = require("./statsModule");
 const killfeedModule = require("./killfeedModule");
@@ -81,8 +90,20 @@ client.on("messageCreate", async (msg) => {
         const zVictim = getZ(content, "Victim");
         const zKiller = getZ(content, "Killer");
 
-        const outputChannel = await client.channels.fetch(OUTPUT_CHANNEL_ID);
-        const alertChannel = await client.channels.fetch(ALERT_CHANNEL_ID);
+        let outputChannel = null;
+        let alertChannel = null;
+
+        try {
+            outputChannel = await client.channels.fetch(OUTPUT_CHANNEL_ID);
+        } catch (err) {
+            console.error("Output channel fetch failed:", err);
+        }
+
+        try {
+            alertChannel = await client.channels.fetch(ALERT_CHANNEL_ID);
+        } catch (err) {
+            console.error("Alert channel fetch failed:", err);
+        }
 
         const now = new Date();
         const time = now.toLocaleString("no-NO");
@@ -100,37 +121,39 @@ client.on("messageCreate", async (msg) => {
             if (EXCLUDED_WEAPONS.includes(hit.weapon)) return;
             if (parseFloat(hit.distance) < 5) return;
 
-            // ALERTS
-            await alertsModule.handleAlerts(
-                hit,
-                alertChannel,
-                coordsKiller,
-                coordsVictim,
-                zKiller,
-                time
-            );
+            if (alertChannel) {
+                await alertsModule.handleAlerts(
+                    hit,
+                    alertChannel,
+                    coordsKiller,
+                    coordsVictim,
+                    zKiller,
+                    time
+                );
+            }
 
-            // last hit
             lastHit.set(hit.victimName.toLowerCase(), {
                 damage: hit.damage,
                 zone: hit.zone
             });
 
-            // killfeed
-            await killfeedModule.sendHitEmbed({
-                outputChannel,
-                hit,
-                coordsKiller,
-                coordsVictim,
-                zKiller,
-                zVictim,
-                time
-            });
+            if (outputChannel) {
+                await killfeedModule.sendHitEmbed({
+                    outputChannel,
+                    hit,
+                    coordsKiller,
+                    coordsVictim,
+                    zKiller,
+                    zVictim,
+                    time
+                });
+            }
 
-            // stats
             (async () => {
                 try {
-                    await statsModule.handleStats(hit, alertChannel, coordsKiller, zKiller);
+                    if (alertChannel) {
+                        await statsModule.handleStats(hit, alertChannel, coordsKiller, zKiller);
+                    }
                 } catch (err) {
                     console.error("Stats error:", err);
                 }
@@ -140,7 +163,7 @@ client.on("messageCreate", async (msg) => {
         }
 
         // ================= KILL =================
-        if (kill) {
+        if (kill && outputChannel) {
             const last = lastHit.get(kill.victimName.toLowerCase()) || {};
 
             await killfeedModule.sendKillEmbed({
@@ -162,24 +185,22 @@ client.on("messageCreate", async (msg) => {
 
 client.login(TOKEN);
 
-// ===== KEEP ALIVE (CRASH-SAFE) =====
+// ===== KEEP ALIVE =====
 const http = require("http");
 
 const PORT = process.env.PORT || 3000;
 
-const server = http.createServer((req, res) => {
+http.createServer((req, res) => {
     res.writeHead(200);
     res.end("OK");
-});
-
-server.listen(PORT, () => {
+}).listen(PORT, () => {
     console.log("Keep-alive running on port", PORT);
 });
 
-// SAFE self-ping
+// SAFE ping
 setInterval(() => {
     try {
         http.get(`http://localhost:${PORT}`, () => {})
             .on("error", () => {});
-    } catch (err) {}
+    } catch {}
 }, 30000);
