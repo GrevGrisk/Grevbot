@@ -10,6 +10,8 @@ const client = new Client({
 });
 
 const TOKEN = process.env.TOKEN;
+const GUILD_ID = "DIN_SERVER_ID_HER"; // ⚠️ SETT DENNE
+
 const INPUT_CHANNEL_ID = "1483550858099560502";
 const OUTPUT_CHANNEL_ID = "1492666634190454864";
 const ALERT_CHANNEL_ID = "1478757145288900679";
@@ -131,10 +133,10 @@ function parseKill(text) {
     };
 }
 
-// ===== register slash command =====
+// ===== REGISTER COMMAND =====
 async function registerCommands() {
     try {
-        if (!client.application) return;
+        const guild = await client.guilds.fetch(GUILD_ID);
 
         const commands = [
             new SlashCommandBuilder()
@@ -149,10 +151,11 @@ async function registerCommands() {
                 .toJSON()
         ];
 
-        await client.application.commands.set(commands);
-        console.log("✅ Slash commands registered");
+        await guild.commands.set(commands);
+
+        console.log("✅ Slash command registered");
     } catch (err) {
-        console.error("❌ Slash command error:", err);
+        console.error("❌ Command error:", err);
     }
 }
 
@@ -161,15 +164,11 @@ client.on("clientReady", async () => {
     await registerCommands();
 });
 
-// ===== slash command handler =====
+// ===== SLASH COMMAND =====
 client.on("interactionCreate", async (interaction) => {
     try {
         if (!interaction.isChatInputCommand()) return;
         if (interaction.commandName !== "profile") return;
-
-        if (typeof statsModule.getStatsById !== "function") {
-            return interaction.reply({ content: "Stats not ready.", ephemeral: true });
-        }
 
         const id = interaction.options.getString("id");
         const stats = await statsModule.getStatsById(id);
@@ -211,7 +210,7 @@ Right leg: ${stats.right_leg || 0} (${percent(stats.right_leg)}%)`
     }
 });
 
-// ===== ORIGINAL MESSAGE HANDLER (UNCHANGED) =====
+// ===== ORIGINAL MESSAGE HANDLER (URØRT) =====
 client.on("messageCreate", async (msg) => {
     try {
         if (msg.author.id === client.user.id) return;
@@ -233,12 +232,15 @@ client.on("messageCreate", async (msg) => {
         const hit = parseHit(content);
         const kill = parseKill(content);
 
+        // ================= HIT =================
         if (hit) {
+
             if (EXCLUDED_WEAPONS.includes(hit.weapon)) return;
             if (parseFloat(hit.distance) < 5) return;
 
             const victims = storeRecentHit(hit);
 
+            // ===== HEAD ALERT =====
             if (hit.zone.toLowerCase() === "head") {
                 const stats = trackHeadshotsAdvanced(hit.killerName);
 
@@ -261,26 +263,91 @@ client.on("messageCreate", async (msg) => {
                 }
 
                 if (triggered) {
+                    const shotLink =
+                        coordsKiller && coordsVictim
+                            ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(hit.weapon)}&dist=${hit.distance}&dmg=${hit.damage}&hit=${hit.zone}`
+                            : null;
+
+                    const victimList = victims.map(v =>
+                        `[${v.victim}](${v.link}), ${v.weapon}, ${v.zone}, ${v.distance}m`
+                    ).join("\n");
+
                     const alertEmbed = new EmbedBuilder()
                         .setColor(0xff0000)
                         .setTitle("Grevbot Alert!")
                         .setDescription("⚠️ Suspicious Activity detected !!! ⚠️")
                         .addFields(
                             { name: "Player", value: `[${hit.killerName}](${hit.killerLink})` },
-                            { name: "Activity", value: message }
-                        );
+                            { name: "Activity", value: message },
+                            { name: "Victims and weapons", value: victimList || "-" },
+                            { name: "Killer coordinates", value: `${coordsKiller?.x}, ${zKiller}, ${coordsKiller?.y}` },
+                            { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" },
+                            { name: "Date and time", value: time }
+                        )
+                        .setFooter({ text: "GrevGrisk - Line-of-sight" });
 
                     await alertChannel.send({ embeds: [alertEmbed] });
                 }
             }
 
-            await outputChannel.send({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(0x00ff00)
-                        .setDescription(`${hit.killerName} → ${hit.victimName}`)
-                ]
+            // ===== BRAIN ALERT =====
+            if (hit.zone.toLowerCase() === "brain") {
+                const count = trackBrainHits(hit.killerName);
+
+                if (count === 3) {
+                    const shotLink =
+                        coordsKiller && coordsVictim
+                            ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(hit.weapon)}&dist=${hit.distance}&dmg=${hit.damage}&hit=${hit.zone}`
+                            : null;
+
+                    const victimList = victims.map(v =>
+                        `[${v.victim}](${v.link}), ${v.weapon}, ${v.zone}, ${v.distance}m`
+                    ).join("\n");
+
+                    const alertEmbed = new EmbedBuilder()
+                        .setColor(0x9900ff)
+                        .setTitle("🧠 Grevbot Alert!")
+                        .setDescription("⚠️ Suspicious Activity detected !!! ⚠️")
+                        .addFields(
+                            { name: "Player", value: `[${hit.killerName}](${hit.killerLink})` },
+                            { name: "Activity", value: `Has hit ${count} brain hits within 10 minutes` },
+                            { name: "Victims and weapons", value: victimList || "-" },
+                            { name: "Killer coordinates", value: `${coordsKiller?.x}, ${zKiller}, ${coordsKiller?.y}` },
+                            { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" },
+                            { name: "Date and time", value: time }
+                        )
+                        .setFooter({ text: "GrevGrisk - Line-of-sight" });
+
+                    await alertChannel.send({ embeds: [alertEmbed] });
+                }
+            }
+
+            lastHit.set(hit.victimName.toLowerCase(), {
+                damage: hit.damage,
+                zone: hit.zone
             });
+
+            const shotLink =
+                coordsKiller && coordsVictim
+                    ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(hit.weapon)}&dist=${hit.distance}&dmg=${hit.damage}&hit=${hit.zone}`
+                    : null;
+
+            const embed = new EmbedBuilder()
+                .setColor(0x00ff00)
+                .addFields(
+                    { name: "Killer", value: `[${hit.killerName}](${hit.killerLink})`, inline: true },
+                    { name: "Victim", value: `[${hit.victimName}](${hit.victimLink})`, inline: true },
+                    { name: "Weapon", value: hit.weapon },
+                    { name: "Hitzone", value: hit.zone },
+                    { name: "Distance", value: `${hit.distance} m`, inline: true },
+                    { name: "Damage", value: `${hit.damage}`, inline: true },
+                    { name: "Killer Coordinates", value: `${coordsKiller?.x}, ${zKiller}, ${coordsKiller?.y}`, inline: true },
+                    { name: "Victim Coordinates", value: `${coordsVictim?.x}, ${zVictim}, ${coordsVictim?.y}`, inline: true },
+                    { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" },
+                    { name: "Time", value: `🕒 ${time}` }
+                );
+
+            await outputChannel.send({ embeds: [embed] });
 
             (async () => {
                 try {
@@ -289,6 +356,33 @@ client.on("messageCreate", async (msg) => {
             })();
 
             return;
+        }
+
+        // ================= KILL =================
+        if (kill) {
+            const last = lastHit.get(kill.victimName.toLowerCase()) || {};
+
+            const shotLink =
+                coordsKiller && coordsVictim
+                    ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(kill.weapon)}&dist=${kill.distance}&dmg=${last.damage || ""}&hit=${last.zone || ""}`
+                    : null;
+
+            const embed = new EmbedBuilder()
+                .setColor(0xff0000)
+                .addFields(
+                    { name: "Killer", value: `[${kill.killerName}](${kill.killerLink})`, inline: true },
+                    { name: "Victim", value: `[${kill.victimName}](${kill.victimLink})`, inline: true },
+                    { name: "Weapon", value: kill.weapon },
+                    { name: "Hitzone", value: last.zone || "-", inline: true },
+                    { name: "Damage", value: last.damage || "-", inline: true },
+                    { name: "Distance", value: `${kill.distance} m` },
+                    { name: "Killer Coordinates", value: `${coordsKiller?.x}, ${zKiller}, ${coordsKiller?.y}`, inline: true },
+                    { name: "Victim Coordinates", value: `${coordsVictim?.x}, ${zVictim}, ${coordsVictim?.y}`, inline: true },
+                    { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" },
+                    { name: "Time", value: `🕒 ${time}` }
+                );
+
+            await outputChannel.send({ embeds: [embed] });
         }
 
     } catch (err) {
