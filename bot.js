@@ -9,8 +9,8 @@ process.on("unhandledRejection", (reason) => {
 
 const { Client, GatewayIntentBits } = require("discord.js");
 const killfeedModule = require("./killfeedModule");
+const alertsModule = require("./alertsModule");
 // const statsModule = require("./statsModule");
-// const alertsModule = require("./alertsModule");
 
 const client = new Client({
     intents: [
@@ -24,6 +24,9 @@ const TOKEN = process.env.TOKEN;
 
 const INPUT_CHANNEL_ID = "1483550858099560502";
 const OUTPUT_CHANNEL_ID = "1492666634190454864";
+const ALERT_CHANNEL_ID = "1478757145288900679";
+
+const EXCLUDED_WEAPONS = ["TriDagger"];
 
 const lastHit = new Map();
 
@@ -104,11 +107,18 @@ client.on("messageCreate", async (msg) => {
         const zKiller = getZ(content, "Killer");
 
         let outputChannel = null;
+        let alertChannel = null;
 
         try {
             outputChannel = await client.channels.fetch(OUTPUT_CHANNEL_ID);
         } catch (err) {
             console.error("Output channel fetch failed:", err);
+        }
+
+        try {
+            alertChannel = await client.channels.fetch(ALERT_CHANNEL_ID);
+        } catch (err) {
+            console.error("Alert channel fetch failed:", err);
         }
 
         const now = new Date();
@@ -120,13 +130,13 @@ client.on("messageCreate", async (msg) => {
         if (hit) {
             console.log("PARSED HIT:", hit.killerName, hit.zone);
 
-            // 🔥 lagre alltid
+            // ALWAYS store
             lastHit.set(hit.victimName.toLowerCase(), {
                 damage: hit.damage,
                 zone: hit.zone
             });
 
-            // 🔥 killfeed ONLY
+            // ALWAYS killfeed
             if (outputChannel) {
                 try {
                     await killfeedModule.sendHitEmbed({
@@ -140,6 +150,26 @@ client.on("messageCreate", async (msg) => {
                     });
                 } catch (err) {
                     console.error("Killfeed error:", err);
+                }
+            }
+
+            // FILTER ONLY FOR ALERTS
+            const isFiltered =
+                EXCLUDED_WEAPONS.includes(hit.weapon) ||
+                parseFloat(hit.distance) < 5;
+
+            if (!isFiltered && alertChannel) {
+                try {
+                    await alertsModule.handleAlerts(
+                        hit,
+                        alertChannel,
+                        coordsKiller,
+                        coordsVictim,
+                        zKiller,
+                        time
+                    );
+                } catch (err) {
+                    console.error("Alerts error:", err);
                 }
             }
 
