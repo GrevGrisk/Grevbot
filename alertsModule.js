@@ -1,6 +1,6 @@
 const { EmbedBuilder } = require("discord.js");
 
-// ===== TRACKERS (isolert) =====
+// ===== TRACKERS =====
 const headshotTracker = new Map();
 const brainTracker = new Map();
 const recentHits = new Map();
@@ -71,13 +71,22 @@ function trackBrain(killerName) {
     return recent.length;
 }
 
+// ===== helpers =====
+function formatPlayer(name, link) {
+    return link ? `[${name}](${link})` : name;
+}
+
+function formatCoords(coords, z) {
+    return coords ? `${coords.x}, ${z}, ${coords.y}` : "-";
+}
+
 // ===== MAIN =====
 async function handleAlerts(hit, alertChannel, coordsKiller, coordsVictim, zKiller, time) {
     try {
         const victims = storeRecentHit(hit);
 
         // ===== HEAD ALERT =====
-        if (hit.zone.toLowerCase() === "head") {
+        if (hit.zone === "head") {
             const stats = trackHeadshots(hit.killerName);
 
             let triggered = false;
@@ -105,7 +114,9 @@ async function handleAlerts(hit, alertChannel, coordsKiller, coordsVictim, zKill
                         : null;
 
                 const victimList = victims.map(v =>
-                    `[${v.victim}](${v.link}), ${v.weapon}, ${v.zone}, ${v.distance}m`
+                    v.link
+                        ? `[${v.victim}](${v.link}), ${v.weapon}, ${v.zone}, ${v.distance}m`
+                        : `${v.victim}, ${v.weapon}, ${v.zone}, ${v.distance}m`
                 ).join("\n");
 
                 const embed = new EmbedBuilder()
@@ -113,10 +124,10 @@ async function handleAlerts(hit, alertChannel, coordsKiller, coordsVictim, zKill
                     .setTitle("Grevbot Alert!")
                     .setDescription("⚠️ Suspicious Activity detected !!! ⚠️")
                     .addFields(
-                        { name: "Player", value: `[${hit.killerName}](${hit.killerLink})` },
+                        { name: "Player", value: formatPlayer(hit.killerName, hit.killerLink) },
                         { name: "Activity", value: message },
                         { name: "Victims and weapons", value: victimList || "-" },
-                        { name: "Killer coordinates", value: `${coordsKiller?.x}, ${zKiller}, ${coordsKiller?.y}` },
+                        { name: "Killer coordinates", value: formatCoords(coordsKiller, zKiller) },
                         { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" },
                         { name: "Date and time", value: time }
                     )
@@ -127,7 +138,7 @@ async function handleAlerts(hit, alertChannel, coordsKiller, coordsVictim, zKill
         }
 
         // ===== BRAIN ALERT =====
-        if (hit.zone.toLowerCase() === "brain") {
+        if (hit.zone === "brain") {
             const count = trackBrain(hit.killerName);
 
             if (count === 3) {
@@ -137,7 +148,9 @@ async function handleAlerts(hit, alertChannel, coordsKiller, coordsVictim, zKill
                         : null;
 
                 const victimList = victims.map(v =>
-                    `[${v.victim}](${v.link}), ${v.weapon}, ${v.zone}, ${v.distance}m`
+                    v.link
+                        ? `[${v.victim}](${v.link}), ${v.weapon}, ${v.zone}, ${v.distance}m`
+                        : `${v.victim}, ${v.weapon}, ${v.zone}, ${v.distance}m`
                 ).join("\n");
 
                 const embed = new EmbedBuilder()
@@ -145,10 +158,10 @@ async function handleAlerts(hit, alertChannel, coordsKiller, coordsVictim, zKill
                     .setTitle("🧠 Grevbot Alert!")
                     .setDescription("⚠️ Suspicious Activity detected !!! ⚠️")
                     .addFields(
-                        { name: "Player", value: `[${hit.killerName}](${hit.killerLink})` },
+                        { name: "Player", value: formatPlayer(hit.killerName, hit.killerLink) },
                         { name: "Activity", value: `Has hit ${count} brain hits within 10 minutes` },
                         { name: "Victims and weapons", value: victimList || "-" },
-                        { name: "Killer coordinates", value: `${coordsKiller?.x}, ${zKiller}, ${coordsKiller?.y}` },
+                        { name: "Killer coordinates", value: formatCoords(coordsKiller, zKiller) },
                         { name: "Map", value: shotLink ? `[View in map](${shotLink})` : "-" },
                         { name: "Date and time", value: time }
                     )
