@@ -12,7 +12,7 @@ const client = new Client({
 const TOKEN = process.env.TOKEN;
 const INPUT_CHANNEL_ID = "1483550858099560502";
 const OUTPUT_CHANNEL_ID = "1492666634190454864";
-const ALERT_CHANNEL_ID = "1478757145288900679";
+const ALERT_CHANNEL_ID = "PUTT_ALERT_CHANNEL_ID_HER";
 
 const EXCLUDED_WEAPONS = ["TriDagger"];
 
@@ -160,14 +160,12 @@ client.on("messageCreate", async (msg) => {
         if (hit) {
 
             // 🔥 stats module (helt isolert)
-            const stats = statsModule.updateStats(hit);
-            await statsModule.handleStats(
+            statsModule.handleStats(
                 hit,
-                stats,
                 alertChannel,
                 coordsKiller,
                 zKiller
-            );
+            ).catch(() => {});
 
             // 🔕 filters
             if (EXCLUDED_WEAPONS.includes(hit.weapon)) return;
