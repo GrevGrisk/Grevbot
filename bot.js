@@ -10,7 +10,6 @@ process.on("unhandledRejection", (reason) => {
 const { Client, GatewayIntentBits } = require("discord.js");
 const killfeedModule = require("./killfeedModule");
 const alertsModule = require("./alertsModule");
-// const statsModule = require("./statsModule");
 
 const client = new Client({
     intents: [
@@ -127,10 +126,10 @@ client.on("messageCreate", async (msg) => {
         const hit = parseHit(content);
         const kill = parseKill(content);
 
+        // ===== HIT =====
         if (hit) {
             console.log("PARSED HIT:", hit.killerName, hit.zone);
 
-            // ALWAYS store
             lastHit.set(hit.victimName.toLowerCase(), {
                 damage: hit.damage,
                 zone: hit.zone
@@ -176,11 +175,15 @@ client.on("messageCreate", async (msg) => {
             return;
         }
 
+        // ===== KILL =====
         if (kill && outputChannel) {
             try {
+                const last = lastHit.get(kill.victimName.toLowerCase()) || {};
+
                 await killfeedModule.sendKillEmbed({
                     outputChannel,
                     kill,
+                    last,
                     coordsKiller,
                     coordsVictim,
                     zKiller,
@@ -199,10 +202,11 @@ client.on("messageCreate", async (msg) => {
 
 client.login(TOKEN);
 
-// ===== KEEP ALIVE =====
+// ===== KEEP ALIVE (PUBLIC PING) =====
 const http = require("http");
 
 const PORT = process.env.PORT || 3000;
+const PUBLIC_URL = "https://grevbot-production.up.railway.app";
 
 http.createServer((req, res) => {
     res.writeHead(200);
@@ -210,6 +214,11 @@ http.createServer((req, res) => {
 }).listen(PORT, () => {
     console.log("Keep-alive running on port", PORT);
 });
+
+setInterval(() => {
+    http.get(PUBLIC_URL, () => {})
+        .on("error", () => {});
+}, 25000);
 
 // DEBUG HEARTBEAT
 setInterval(() => {
