@@ -33,35 +33,35 @@ function getZ(text, type) {
     return match ? match[1] : "0";
 }
 
-// ===== parse HIT =====
+// ===== FIXED parse HIT =====
 function parseHit(text) {
-    const match = text.match(/\[(.*?)\]\(<(.*?)>\)\s+got hit by\s+\[(.*?)\]\(<(.*?)>\)\s+\((.*?),\s*([\d.]+)m,\s*([\d.]+)\s*damage,\s*hitzone\s*(\w+)\)/i);
+    const match = text.match(/(.+?) got hit by (.+?) \((.+?),\s*([\d.]+)m,\s*([\d.]+)\s*damage,\s*hitzone\s*(\w+)\)/i);
     if (!match) return null;
 
     return {
-        victimName: match[1],
-        victimLink: match[2],
-        killerName: match[3],
-        killerLink: match[4],
-        weapon: match[5],
-        distance: match[6],
-        damage: match[7],
-        zone: match[8]
+        victimName: match[1].trim(),
+        victimLink: null,
+        killerName: match[2].trim(),
+        killerLink: null,
+        weapon: match[3].trim(),
+        distance: match[4],
+        damage: match[5],
+        zone: match[6].toLowerCase()
     };
 }
 
-// ===== parse KILL =====
+// ===== parse KILL (urørt) =====
 function parseKill(text) {
-    const match = text.match(/\[(.*?)\]\(<(.*?)>\)\s+got killed by\s+\[(.*?)\]\(<(.*?)>\)\s+\((.*?),\s*([\d.]+)m\)/i);
+    const match = text.match(/(.*?) got killed by (.*?) \((.*?),\s*([\d.]+)m\)/i);
     if (!match) return null;
 
     return {
         victimName: match[1],
-        victimLink: match[2],
-        killerName: match[3],
-        killerLink: match[4],
-        weapon: match[5],
-        distance: match[6]
+        victimLink: null,
+        killerName: match[2],
+        killerLink: null,
+        weapon: match[3],
+        distance: match[4]
     };
 }
 
@@ -90,13 +90,18 @@ client.on("messageCreate", async (msg) => {
         const hit = parseHit(content);
         const kill = parseKill(content);
 
+        // DEBUG (kan fjernes senere)
+        if (hit) {
+            console.log("PARSED HIT:", hit.killerName, hit.zone);
+        }
+
         // ================= HIT =================
         if (hit) {
 
             if (EXCLUDED_WEAPONS.includes(hit.weapon)) return;
             if (parseFloat(hit.distance) < 5) return;
 
-            // 🔥 Alerts (nå modul)
+            // 🔥 ALERTS
             await alertsModule.handleAlerts(
                 hit,
                 alertChannel,
@@ -106,13 +111,13 @@ client.on("messageCreate", async (msg) => {
                 time
             );
 
-            // 🔥 lastHit (brukes av kill)
+            // 🔥 last hit
             lastHit.set(hit.victimName.toLowerCase(), {
                 damage: hit.damage,
                 zone: hit.zone
             });
 
-            // 🔥 Killfeed
+            // 🔥 killfeed
             await killfeedModule.sendHitEmbed({
                 outputChannel,
                 hit,
@@ -123,7 +128,7 @@ client.on("messageCreate", async (msg) => {
                 time
             });
 
-            // 🔥 Stats (isolert)
+            // 🔥 stats
             (async () => {
                 try {
                     await statsModule.handleStats(hit, alertChannel, coordsKiller, zKiller);
@@ -156,7 +161,7 @@ client.on("messageCreate", async (msg) => {
 
 client.login(TOKEN);
 
-// 🔥 HTTP KEEP ALIVE (Railway fix)
+// ===== Railway keep alive =====
 const http = require("http");
 
 http.createServer((req, res) => {
