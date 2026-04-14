@@ -294,12 +294,8 @@ client.on("messageCreate", async (msg) => {
 });
 
 client.login(TOKEN);
-require("http").createServer(() => {}).listen(3000);
 
-process.on("unhandledRejection", (err) => {
-    console.error("UNHANDLED REJECTION:", err);
-});
-
-process.on("uncaughtException", (err) => {
-    console.error("UNCAUGHT EXCEPTION:", err);
-});
+// 🔥 KEEP ALIVE (fix Railway stop)
+setInterval(() => {
+    console.log("Bot alive");
+}, 30000);
