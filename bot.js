@@ -1,4 +1,5 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const statsModule = require("./statsModule");
 
 const client = new Client({
     intents: [
@@ -147,6 +148,7 @@ client.on("messageCreate", async (msg) => {
         const zKiller = getZ(content, "Killer");
 
         const outputChannel = await client.channels.fetch(OUTPUT_CHANNEL_ID);
+        const alertChannel = await client.channels.fetch(ALERT_CHANNEL_ID);
 
         const now = new Date();
         const time = now.toLocaleString("no-NO");
@@ -157,6 +159,16 @@ client.on("messageCreate", async (msg) => {
         // ================= HIT =================
         if (hit) {
 
+            // 🔥 stats module (helt isolert)
+            const stats = statsModule.updateStats(hit);
+            await statsModule.handleStats(
+                hit,
+                stats,
+                alertChannel,
+                coordsKiller,
+                zKiller
+            );
+
             // 🔕 filters
             if (EXCLUDED_WEAPONS.includes(hit.weapon)) return;
             if (parseFloat(hit.distance) < 5) return;
@@ -166,7 +178,6 @@ client.on("messageCreate", async (msg) => {
             // ===== HEAD ALERT =====
             if (hit.zone.toLowerCase() === "head") {
                 const stats = trackHeadshotsAdvanced(hit.killerName);
-                const alertChannel = await client.channels.fetch(ALERT_CHANNEL_ID);
 
                 let triggered = false;
                 let message = "";
@@ -217,7 +228,6 @@ client.on("messageCreate", async (msg) => {
             // ===== BRAIN ALERT =====
             if (hit.zone.toLowerCase() === "brain") {
                 const count = trackBrainHits(hit.killerName);
-                const alertChannel = await client.channels.fetch(ALERT_CHANNEL_ID);
 
                 if (count === 3) {
                     const shotLink =
