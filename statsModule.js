@@ -20,11 +20,19 @@ if (process.env.DATABASE_URL) {
 // ===== memory fallback =====
 const playerStats = new Map();
 
-// ===== extract CF ID =====
+// ===== extract CF / Steam ID =====
 function extractId(link) {
     if (!link) return null;
-    const match = link.match(/profile\/([^/]+)/);
-    return match ? match[1] : null;
+
+    // CF Tools (hex id)
+    let match = link.match(/profile\/([a-f0-9]+)/i);
+    if (match) return match[1];
+
+    // Steam profile
+    match = link.match(/steamcommunity\.com\/profiles\/(\d+)/);
+    if (match) return match[1];
+
+    return null;
 }
 
 // ===== normalize hitzones =====
@@ -90,7 +98,6 @@ async function handleStats(hit, alertChannel, coordsKiller, zKiller) {
         const key = id ? id : hit.killerName.toLowerCase();
 
         let stats;
-
         const zone = normalizeZone(hit.zone);
 
         // ===== DB MODE =====
