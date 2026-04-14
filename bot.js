@@ -202,8 +202,9 @@ client.on("messageCreate", async (msg) => {
 
 client.login(TOKEN);
 
-// ===== KEEP ALIVE (PUBLIC PING) =====
+// ===== KEEP ALIVE =====
 const http = require("http");
+const https = require("https");
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_URL = "https://grevbot-production.up.railway.app";
@@ -216,7 +217,7 @@ http.createServer((req, res) => {
 });
 
 setInterval(() => {
-    http.get(PUBLIC_URL, () => {})
+    https.get(PUBLIC_URL, () => {})
         .on("error", () => {});
 }, 25000);
 
