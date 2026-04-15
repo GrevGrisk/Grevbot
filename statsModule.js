@@ -98,8 +98,7 @@ function buildChart(stats) {
         { label: "Legs", value: (stats.left_leg || 0) + (stats.right_leg || 0), color: "#4DB6AC" }
     ];
 
-    const filtered = raw.filter(e => e.value > 0);
-    const total = filtered.reduce((sum, e) => sum + e.value, 0);
+    const total = raw.reduce((sum, e) => sum + e.value, 0);
 
     const pct = (v) =>
         total > 0 ? parseFloat(((v / total) * 100).toFixed(1)) : 0;
@@ -107,10 +106,10 @@ function buildChart(stats) {
     const chartConfig = {
         type: "pie",
         data: {
-            labels: filtered.map(e => e.label),
+            labels: raw.map(e => e.label),
             datasets: [{
-                data: filtered.map(e => pct(e.value)),
-                backgroundColor: filtered.map(e => e.color),
+                data: raw.map(e => pct(e.value)),
+                backgroundColor: raw.map(e => e.color),
                 borderColor: "#ffffff",
                 borderWidth: 2
             }]
