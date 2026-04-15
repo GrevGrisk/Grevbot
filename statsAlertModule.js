@@ -4,27 +4,10 @@ const { EmbedBuilder } = require("discord.js");
 ========================================
 ⚙️ ALERT CHANNEL SETUP
 ========================================
-
-Velg ÉN av disse:
-
-1. Hardcode channels (enklest):
-   → legg inn ID her:
-
 */
 const ALERT_CHANNEL_IDS = [
-    "1493801257838710814"
+    "PUT_CHANNEL_ID_HERE"
 ];
-
-/*
-2. Eller bruk ENV (Railway):
-   ALERT_CHANNEL_IDS=1234567890,9876543210
-
-Da kommenterer du ut linjen over og bruker denne:
-*/
-// const ALERT_CHANNEL_IDS = process.env.ALERT_CHANNEL_IDS
-//     ? process.env.ALERT_CHANNEL_IDS.split(",").map(id => id.trim())
-//     : [];
-
 /*
 ========================================
 */
@@ -36,11 +19,16 @@ const SHOTGUNS = [
     "Serbu Super-Shorty"
 ];
 
+// 🔥 progression storage
+const playerAlerts = new Map();
+
+const ALERT_WINDOW = 60 * 60 * 1000; // 1 time
+
 function buildProfileLink(cfid) {
     return `https://app.cftools.cloud/profile/${cfid}`;
 }
 
-// ===== SAME CHART =====
+// ===== CHART =====
 function buildChart(stats) {
     const raw = [
         { label: "Brain", value: stats.brain || 0, color: "#4FC3F7" },
@@ -101,7 +89,8 @@ async function checkPlayer(client, hit, stats) {
     try {
         if (!stats) return;
 
-        // FILTERS
+        // ===== FILTERS =====
+
         if ((hit.weapon || "").toLowerCase().includes("tridagger")) return;
 
         const isShotgun = SHOTGUNS.some(w =>
@@ -110,7 +99,8 @@ async function checkPlayer(client, hit, stats) {
 
         if (isShotgun && (hit.distance || 0) < 30) return;
 
-        // CALC
+        // ===== CALC =====
+
         const brain = stats.brain || 0;
         const head = stats.head || 0;
         const torso = stats.torso || 0;
@@ -118,13 +108,16 @@ async function checkPlayer(client, hit, stats) {
         const legs = (stats.left_leg || 0) + (stats.right_leg || 0);
 
         const total = brain + head + torso + arms + legs;
+
         if (total < 30) return;
 
         const pct = (v) => (total > 0 ? (v / total) * 100 : 0);
 
-        const headPct = pct(head);
         const brainPct = pct(brain);
+        const headPct = pct(head);
         const torsoPct = pct(torso);
+
+        // ===== THRESHOLDS =====
 
         let reason = null;
 
@@ -138,7 +131,31 @@ async function checkPlayer(client, hit, stats) {
 
         if (!reason) return;
 
-        // EMBED
+        // ===== PROGRESSION CHECK =====
+
+        const now = Date.now();
+        const prev = playerAlerts.get(stats.player);
+
+        if (prev) {
+            const withinWindow = (now - prev.time) < ALERT_WINDOW;
+
+            if (withinWindow) {
+                const brainIncrease = brainPct - prev.brain;
+                const headIncrease = headPct - prev.head;
+                const torsoIncrease = torsoPct - prev.torso;
+
+                if (
+                    brainIncrease < 1 &&
+                    headIncrease < 2 &&
+                    torsoIncrease < 3
+                ) {
+                    return; // ⛔ ikke nok endring
+                }
+            }
+        }
+
+        // ===== EMBED =====
+
         const embed = new EmbedBuilder()
             .setColor("#ff3d00")
             .setTitle("🚨 Grevbot Alert 🚨")
@@ -169,7 +186,8 @@ async function checkPlayer(client, hit, stats) {
                 text: "GrevBot statsalert 2026"
             });
 
-        // SEND
+        // ===== SEND =====
+
         for (const id of ALERT_CHANNEL_IDS) {
             try {
                 const channel = await client.channels.fetch(id);
@@ -180,6 +198,15 @@ async function checkPlayer(client, hit, stats) {
                 console.error(`Failed to send alert to ${id}:`, err.message);
             }
         }
+
+        // ===== STORE PROGRESSION =====
+
+        playerAlerts.set(stats.player, {
+            time: now,
+            brain: brainPct,
+            head: headPct,
+            torso: torsoPct
+        });
 
     } catch (err) {
         console.error("Alert error:", err);
