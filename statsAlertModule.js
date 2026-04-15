@@ -57,8 +57,7 @@ function buildChart(stats) {
             legend: {
                 labels: {
                     fontColor: "#ffffff",
-                    fontSize: 20,
-                    fontStyle: "bold"
+                    fontSize: 16
                 }
             },
             plugins: {
@@ -68,11 +67,8 @@ function buildChart(stats) {
                     borderRadius: 4,
                     padding: 4,
                     font: {
-                        size: 20,
+                        size: 16,
                         weight: "bold"
-                    },
-                    formatter: function(value) {
-                        return value;
                     }
                 }
             }
@@ -149,24 +145,21 @@ async function checkPlayer(client, hit, stats) {
         // ===== EMBED 1 =====
         const alertEmbed = new EmbedBuilder()
             .setColor("#ff1744")
-            .setTitle("🚨🚨 GREVBOT ALERT 🚨🚨")
+            .setTitle("🚨 Grevbot Alert 🚨")
             .setDescription(
-                `## ⚠️ **SUSPICIOUS HIT PATTERN DETECTED** ⚠️\n\n` +
-                `🚨 **${reason.toUpperCase()}** 🚨\n\n` +
-                `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+                `⚠️ Suspicious hit pattern detected\n\n` +
+                `${reason}\n\n` +
                 `👤 **${stats.name || stats.player}**\n` +
-                `[🔗 Open Profile](${buildProfileLink(stats.player)})\n\n` +
-                `🆔 \`${stats.player}\`\n\n` +
-                `━━━━━━━━━━━━━━━━━━━━━━`
+                `[Open Profile](${buildProfileLink(stats.player)})\n\n` +
+                `🆔 \`${stats.player}\``
             )
             .setFooter({
-                text: "🚨 GrevBot StatsAlert System • 2026 🚨"
+                text: "GrevBot statsalert 2026"
             });
 
         // ===== EMBED 2 =====
         const chartEmbed = new EmbedBuilder()
             .setColor("#ff1744")
-            .setTitle("📊 Hit Distribution")
             .setImage(buildChart(stats));
 
         // ===== SEND =====
