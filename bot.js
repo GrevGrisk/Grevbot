@@ -160,18 +160,14 @@ client.on("messageCreate", async (msg) => {
         const now = new Date();
         const time = now.toLocaleString("no-NO");
 
-        const isKill = content.includes("got killed by");
         const isHit = content.includes("got hit by");
-
-        let hit = null;
-        let kill = null;
-
-        // 🔥 FIX: ingen else if
-        if (isHit) hit = parseHit(content);
-        if (isKill) kill = parseKill(content);
+        const isKill = content.includes("got killed by");
 
         // ===== HIT =====
-        if (hit) {
+        if (isHit) {
+            const hit = parseHit(content);
+            if (!hit) return;
+
             const key = hit.victimName.toLowerCase();
 
             if (!lastHit.has(key)) {
@@ -185,41 +181,46 @@ client.on("messageCreate", async (msg) => {
                 time: Date.now()
             });
 
-            const isFiltered =
-                EXCLUDED_WEAPONS.includes(hit.weapon) ||
-                parseFloat(hit.distance) < 5;
-
-            if (!isFiltered && alertChannel) {
-                try {
-                    await alertsModule.handleAlerts(
-                        hit,
-                        alertChannel,
-                        coordsKiller,
-                        coordsVictim,
-                        zKiller,
-                        time
-                    );
-                } catch (err) {
-                    console.error("Alerts error:", err);
-                }
-
-                try {
-                    await statsModule.handleStats(client, hit);
-                } catch (err) {
-                    console.error("Stats error:", err);
-                }
+            if (outputChannel) {
+                await killfeedModule.sendHitEmbed({
+                    outputChannel,
+                    hit,
+                    coordsKiller,
+                    coordsVictim,
+                    zKiller,
+                    zVictim,
+                    time
+                });
             }
 
-            return; // 🔥 viktig
+            return;
         }
 
         // ===== KILL =====
-        if (kill && outputChannel) {
+        if (isKill) {
+            const kill = parseKill(content);
+            if (!kill) return;
 
-            const victimCFID = kill.victimLink?.split("/").pop();
-            const killerCFID = kill.killerLink?.split("/").pop();
+            const key = kill.victimName.toLowerCase();
+
+            let last = { damage: "-", zone: "-" };
+
+            if (lastHit.has(key)) {
+                const hits = lastHit.get(key);
+
+                const match = hits
+                    .filter(h => h.distance === kill.distance)
+                    .sort((a, b) => b.time - a.time);
+
+                if (match.length > 0) {
+                    last = match[0];
+                }
+            }
 
             try {
+                const victimCFID = kill.victimLink?.split("/").pop();
+                const killerCFID = kill.killerLink?.split("/").pop();
+
                 await pool.query(`
                     INSERT INTO player_deaths
                     (victim, victim_name, killer, killer_name, weapon, distance, x, y)
@@ -238,37 +239,20 @@ client.on("messageCreate", async (msg) => {
                 console.error("Death insert error:", err);
             }
 
-            const key = kill.victimName.toLowerCase();
-            const killTime = Date.now();
-
-            let last = { damage: "-", zone: "-" };
-
-            if (lastHit.has(key)) {
-                const hits = lastHit.get(key);
-
-                const exact = hits.filter(h => h.distance === kill.distance);
-
-                if (exact.length > 0) {
-                    const before = exact
-                        .filter(h => h.time <= killTime)
-                        .sort((a, b) => b.time - a.time);
-
-                    if (before.length > 0) {
-                        last = before[0];
-                    }
-                }
+            if (outputChannel) {
+                await killfeedModule.sendKillEmbed({
+                    outputChannel,
+                    kill,
+                    last,
+                    coordsKiller,
+                    coordsVictim,
+                    zKiller,
+                    zVictim,
+                    time
+                });
             }
 
-            await killfeedModule.sendKillEmbed({
-                outputChannel,
-                kill,
-                last,
-                coordsKiller,
-                coordsVictim,
-                zKiller,
-                zVictim,
-                time
-            });
+            return;
         }
 
     } catch (err) {
@@ -277,3 +261,23 @@ client.on("messageCreate", async (msg) => {
 });
 
 client.login(TOKEN);
+
+// ===== KEEP ALIVE =====
+const http = require("http");
+const https = require("https");
+
+const PORT = process.env.PORT || 3000;
+const PUBLIC_URL = "https://grevbot-production.up.railway.app";
+
+http.createServer((req, res) => {
+    res.writeHead(200);
+    res.end("OK");
+}).listen(PORT);
+
+setInterval(() => {
+    https.get(PUBLIC_URL, () => {}).on("error", () => {});
+}, 25000);
+
+setInterval(() => {
+    console.log("BOT STILL RUNNING", new Date().toISOString());
+}, 10000);
