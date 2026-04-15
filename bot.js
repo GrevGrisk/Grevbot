@@ -12,7 +12,8 @@ const { REST } = require("@discordjs/rest");
 
 const killfeedModule = require("./killfeedModule");
 const alertsModule = require("./alertsModule");
-const statsModule = require("./statsModule"); // <-- aktivert
+const statsModule = require("./statsModule");
+const testAlertCommand = require("./testalert"); // 🔥 lagt til
 
 const client = new Client({
     intents: [
@@ -42,7 +43,13 @@ const commands = [
             option.setName("cfid")
                 .setDescription("CF ID")
                 .setRequired(true)
-        )
+        ),
+
+    // 🔥 lagt til testalert
+    new SlashCommandBuilder()
+        .setName("testalert")
+        .setDescription("Trigger a test GrevBot alert")
+
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -51,7 +58,6 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
 client.on("clientReady", async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
-    // registrer commands i alle guilds (instant)
     for (const [id] of client.guilds.cache) {
         try {
             await rest.put(
@@ -126,6 +132,11 @@ client.on("interactionCreate", async interaction => {
 
     if (interaction.commandName === "profile") {
         await statsModule.handleProfile(interaction);
+    }
+
+    // 🔥 lagt til
+    if (interaction.commandName === "testalert") {
+        await testAlertCommand.execute(interaction);
     }
 });
 
