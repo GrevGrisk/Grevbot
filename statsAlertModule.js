@@ -146,7 +146,7 @@ async function checkPlayer(client, hit, stats) {
             }
         }
 
-        // ===== EMBED 1 (ALERT + GIF) =====
+        // ===== EMBED 1 =====
         const alertEmbed = new EmbedBuilder()
             .setColor("#ff1744")
             .setTitle("🚨🚨 GREVBOT ALERT 🚨🚨")
@@ -159,12 +159,11 @@ async function checkPlayer(client, hit, stats) {
                 `🆔 \`${stats.player}\`\n\n` +
                 `━━━━━━━━━━━━━━━━━━━━━━`
             )
-            .setImage("https://media.giphy.com/media/3o7aD2saalBwwftBIY/giphy.gif") // 🔥 blinking banner
             .setFooter({
                 text: "🚨 GrevBot StatsAlert System • 2026 🚨"
             });
 
-        // ===== EMBED 2 (CHART) =====
+        // ===== EMBED 2 =====
         const chartEmbed = new EmbedBuilder()
             .setColor("#ff1744")
             .setTitle("📊 Hit Distribution")
@@ -184,7 +183,7 @@ async function checkPlayer(client, hit, stats) {
             }
         }
 
-        // ===== STORE =====
+        // STORE
         playerAlerts.set(stats.player, {
             time: now,
             brain: brainPct,
