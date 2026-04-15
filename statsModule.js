@@ -1,11 +1,8 @@
 const { EmbedBuilder } = require("discord.js");
-const { Pool } = require("pg");
+const pool = require("./db");
 const statsAlert = require("./statsAlertModule");
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-});
+// ===== HELPERS =====
 
 function extractCFID(link) {
     if (!link) return null;
@@ -21,13 +18,16 @@ function buildMapLink(x, y) {
     return `https://dayz.ginfo.gg/#location=${x};${y}`;
 }
 
-// ===== HANDLE STATS =====
+// ===== HANDLE STATS (LIVE UPDATES) =====
+
 async function handleStats(client, hit) {
     try {
         const killerId = extractCFID(hit.killerLink);
         if (!killerId) return;
 
-        const zone = String(hit.zone || "").toLowerCase().replace(/[\s_-]/g, "");
+        const zone = String(hit.zone || "")
+            .toLowerCase()
+            .replace(/[\s_-]/g, "");
 
         const columnMap = {
             brain: "brain",
@@ -54,6 +54,8 @@ async function handleStats(client, hit) {
         ]);
 
         const updatedStats = await getStatsById(killerId);
+
+        // 🔥 ALERT CHECK
         await statsAlert.checkPlayer(client, hit, updatedStats);
 
     } catch (err) {
@@ -61,7 +63,8 @@ async function handleStats(client, hit) {
     }
 }
 
-// ===== GET PROFILE =====
+// ===== FETCH =====
+
 async function getStatsById(cfid) {
     const res = await pool.query(
         "SELECT * FROM player_stats WHERE player = $1",
@@ -70,7 +73,6 @@ async function getStatsById(cfid) {
     return res.rows[0];
 }
 
-// ===== GET LAST DEATHS =====
 async function getLastDeaths(cfid) {
     try {
         const res = await pool.query(`
@@ -88,6 +90,7 @@ async function getLastDeaths(cfid) {
 }
 
 // ===== CHART =====
+
 function buildChart(stats) {
     const raw = [
         { label: "Brain", value: stats.brain || 0, color: "#4FC3F7" },
@@ -143,7 +146,8 @@ function buildChart(stats) {
     return `https://quickchart.io/chart?devicePixelRatio=3&width=800&height=600&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
 }
 
-// ===== HANDLE PROFILE =====
+// ===== PROFILE COMMAND =====
+
 async function handleProfile(interaction) {
     const cfid = interaction.options.getString("cfid");
 
@@ -175,18 +179,13 @@ async function handleProfile(interaction) {
         if (deaths.length > 0) {
             deathsText = deaths.map(d => {
                 const killerLink = d.killer
-                    ? `https://app.cftools.cloud/profile/${d.killer}`
-                    : null;
-
-                const mapLink = buildMapLink(d.x, d.y);
-
-                const killerText = killerLink
-                    ? `[${d.killer_name || "Unknown"}](${killerLink})`
+                    ? `[${d.killer_name || "Unknown"}](https://app.cftools.cloud/profile/${d.killer})`
                     : `${d.killer_name || "Unknown"}`;
 
+                const mapLink = buildMapLink(d.x, d.y);
                 const mapText = mapLink ? ` | [Map](${mapLink})` : "";
 
-                return `💀 ${killerText} | ${d.weapon || "-"} | ${d.distance || "-"}m${mapText}`;
+                return `💀 ${killerLink} | ${d.weapon || "-"} | ${d.distance || "-"}m${mapText}`;
             }).join("\n");
         }
 
