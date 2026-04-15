@@ -33,8 +33,10 @@ function buildMapLink(death) {
 
     const weapon = death.weapon || "-";
     const distance = death.distance || "-";
-    const damage = death.damage || "-";
-    const hitzone = death.hitzone || death.zone || "-";
+
+    // 🔥 FIX: alltid fallback til "-"
+    const damage = death.damage ?? "-";
+    const hitzone = death.hitzone ?? death.zone ?? "-";
 
     return `https://grevgrisk.github.io/dayzmap?killer=${killerX},${killerY}&victim=${victimX},${victimY}&weapon=${encodeURIComponent(weapon)}&dist=${distance}&dmg=${damage}&hit=${encodeURIComponent(hitzone)}`;
 }
