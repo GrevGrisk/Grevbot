@@ -104,7 +104,7 @@ async function checkPlayer(client, hit, stats) {
 
         const total = brain + head + torso + arms + legs;
 
-        if (!isTest && total < 50) return;
+        if (!isTest && total < 75) return;
 
         const pct = (v) => (total > 0 ? (v / total) * 100 : 0);
 
