@@ -1,5 +1,10 @@
-const { EmbedBuilder } = require("discord.js");
+const { EmbedBuilder, AttachmentBuilder } = require("discord.js");
 const { Pool } = require("pg");
+const { ChartJSNodeCanvas } = require("chartjs-node-canvas");
+
+const width = 400;
+const height = 400;
+const chartCanvas = new ChartJSNodeCanvas({ width, height });
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -11,6 +16,11 @@ function extractCFID(link) {
     if (!link) return null;
     const parts = link.split("/");
     return parts[parts.length - 1];
+}
+
+// ===== BUILD PROFILE LINK =====
+function buildProfileLink(cfid) {
+    return `https://app.cftools.cloud/profile/${cfid}`;
 }
 
 // ===== HANDLE STATS =====
@@ -59,6 +69,48 @@ async function getStatsById(cfid) {
     return res.rows[0];
 }
 
+// ===== CHART =====
+async function generateChart(stats) {
+    const data = [
+        stats.brain || 0,
+        stats.head || 0,
+        stats.torso || 0,
+        stats.left_arm || 0,
+        stats.right_arm || 0,
+        stats.left_leg || 0,
+        stats.right_leg || 0
+    ];
+
+    const configuration = {
+        type: "pie",
+        data: {
+            labels: [
+                "Brain",
+                "Head",
+                "Torso",
+                "Left Arm",
+                "Right Arm",
+                "Left Leg",
+                "Right Leg"
+            ],
+            datasets: [{
+                data,
+                backgroundColor: [
+                    "#ff0000",
+                    "#ff6666",
+                    "#ffa500",
+                    "#00bfff",
+                    "#1e90ff",
+                    "#32cd32",
+                    "#228b22"
+                ]
+            }]
+        }
+    };
+
+    return await chartCanvas.renderToBuffer(configuration);
+}
+
 // ===== HANDLE /PROFILE =====
 async function handleProfile(interaction) {
     const cfid = interaction.options.getString("cfid");
@@ -73,20 +125,39 @@ async function handleProfile(interaction) {
             });
         }
 
-        const embed = new EmbedBuilder()
-            .setTitle(`Profile: ${stats.name || cfid}`)
-            .addFields(
-                { name: "Total Hits", value: String(stats.total || 0), inline: true },
-                { name: "Head", value: String(stats.head || 0), inline: true },
-                { name: "Brain", value: String(stats.brain || 0), inline: true },
-                { name: "Torso", value: String(stats.torso || 0), inline: true },
-                { name: "L Arm", value: String(stats.left_arm || 0), inline: true },
-                { name: "R Arm", value: String(stats.right_arm || 0), inline: true },
-                { name: "L Leg", value: String(stats.left_leg || 0), inline: true },
-                { name: "R Leg", value: String(stats.right_leg || 0), inline: true }
-            );
+        const total = stats.total || 0;
 
-        await interaction.reply({ embeds: [embed] });
+        const percent = (value) =>
+            total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+
+        const chartBuffer = await generateChart(stats);
+        const attachment = new AttachmentBuilder(chartBuffer, { name: "chart.png" });
+
+        const profileUrl = buildProfileLink(cfid);
+
+        const embed = new EmbedBuilder()
+            .setTitle(`Profile: [${stats.name || cfid}](${profileUrl})`)
+            .setDescription(`CFID: \`${cfid}\``)
+            .addFields(
+                { name: "Total Hits", value: String(total) },
+                {
+                    name: "Distribution",
+                    value:
+                        `Brain: ${stats.brain} (${percent(stats.brain)}%)\n` +
+                        `Head: ${stats.head} (${percent(stats.head)}%)\n` +
+                        `Torso: ${stats.torso} (${percent(stats.torso)}%)\n` +
+                        `Left arm: ${stats.left_arm} (${percent(stats.left_arm)}%)\n` +
+                        `Right arm: ${stats.right_arm} (${percent(stats.right_arm)}%)\n` +
+                        `Left leg: ${stats.left_leg} (${percent(stats.left_leg)}%)\n` +
+                        `Right leg: ${stats.right_leg} (${percent(stats.right_leg)}%)`
+                }
+            )
+            .setImage("attachment://chart.png");
+
+        await interaction.reply({
+            embeds: [embed],
+            files: [attachment]
+        });
 
     } catch (err) {
         console.error("Profile error:", err);
