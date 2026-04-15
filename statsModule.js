@@ -122,16 +122,17 @@ Legs  : ${legs} (${calc(legs)}%)
 \`\`\``;
 
         const embed = new EmbedBuilder()
-            .setColor("#2b2d31")
+            .setColor("#2f3136")
             .setTitle("📊 Player Profile")
             .setDescription(
-                `👤 **[${cfid}](${profileUrl})**\n` +
-                `🆔 \`${cfid}\`\n`
+                `**👤 Player**\n` +
+                `➡️ [Open CFtools Profile](${profileUrl})\n` +
+                `\`${cfid}\``
             )
             .addFields(
                 {
                     name: "📊 Total Shots Hit",
-                    value: `\n**${total}**\n`,
+                    value: `\n**${total}**`,
                     inline: false
                 },
                 {
@@ -140,7 +141,8 @@ Legs  : ${legs} (${calc(legs)}%)
                     inline: false
                 }
             )
-            .setImage(chartUrl);
+            .setImage(chartUrl)
+            .setFooter({ text: "Stats Overview" });
 
         await interaction.reply({ embeds: [embed] });
 
