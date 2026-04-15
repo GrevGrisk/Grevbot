@@ -22,6 +22,7 @@ const SHOTGUN_KEYWORDS = [
     "double barrel", "R12",
     "Serbu Super Shorty", 
     "M870", "SPAS-12",
+    "Model 1887"
     
 ];
 
