@@ -80,29 +80,51 @@ function buildChart(stats) {
             labels,
             datasets: [{
                 data,
-                backgroundColor: ["#4FC3F7", "#9575CD", "#F06292", "#FFB74D", "#4DB6AC"],
-                borderColor: "#1e1e1e",
-                borderWidth: 2
+                backgroundColor: [
+                    "#4FC3F7",
+                    "#9575CD",
+                    "#F06292",
+                    "#FFB74D",
+                    "#4DB6AC"
+                ],
+                borderColor: "#ffffff",
+                borderWidth: 3
             }]
         },
         options: {
+            layout: {
+                padding: 30
+            },
             plugins: {
                 legend: {
                     position: "top",
                     labels: {
                         color: "#ffffff",
+                        boxWidth: 30,
+                        boxHeight: 15,
+                        padding: 25,
                         font: {
-                            size: 18,
+                            size: 20,
                             weight: "bold"
-                        },
-                        padding: 20
+                        }
                     }
+                },
+                datalabels: {
+                    color: "#000000",
+                    backgroundColor: "#ffffff",
+                    borderRadius: 4,
+                    padding: 6,
+                    font: {
+                        size: 18,
+                        weight: "bold"
+                    },
+                    formatter: (value) => value > 0 ? value : ""
                 }
             }
         }
     };
 
-    return `https://quickchart.io/chart?width=800&height=600&backgroundColor=transparent&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
+    return `https://quickchart.io/chart?width=900&height=650&devicePixelRatio=2&backgroundColor=transparent&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
 }
 
 // ===== HANDLE /PROFILE =====
