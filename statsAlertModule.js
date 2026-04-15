@@ -1,5 +1,34 @@
 const { EmbedBuilder } = require("discord.js");
 
+/*
+========================================
+⚙️ ALERT CHANNEL SETUP
+========================================
+
+Velg ÉN av disse:
+
+1. Hardcode channels (enklest):
+   → legg inn ID her:
+
+*/
+const ALERT_CHANNEL_IDS = [
+    "PUT_CHANNEL_ID_HERE"
+];
+
+/*
+2. Eller bruk ENV (Railway):
+   ALERT_CHANNEL_IDS=1234567890,9876543210
+
+Da kommenterer du ut linjen over og bruker denne:
+*/
+// const ALERT_CHANNEL_IDS = process.env.ALERT_CHANNEL_IDS
+//     ? process.env.ALERT_CHANNEL_IDS.split(",").map(id => id.trim())
+//     : [];
+
+/*
+========================================
+*/
+
 const SHOTGUNS = [
     "M870",
     "R12",
@@ -7,16 +36,11 @@ const SHOTGUNS = [
     "Serbu Super-Shorty"
 ];
 
-function getAlertChannels() {
-    if (!process.env.ALERT_CHANNEL_IDS) return [];
-    return process.env.ALERT_CHANNEL_IDS.split(",").map(id => id.trim());
-}
-
 function buildProfileLink(cfid) {
     return `https://app.cftools.cloud/profile/${cfid}`;
 }
 
-// ===== SAME CHART AS statsModule =====
+// ===== SAME CHART =====
 function buildChart(stats) {
     const raw = [
         { label: "Brain", value: stats.brain || 0, color: "#4FC3F7" },
@@ -77,8 +101,7 @@ async function checkPlayer(client, hit, stats) {
     try {
         if (!stats) return;
 
-        // ===== FILTERS =====
-
+        // FILTERS
         if ((hit.weapon || "").toLowerCase().includes("tridagger")) return;
 
         const isShotgun = SHOTGUNS.some(w =>
@@ -87,8 +110,7 @@ async function checkPlayer(client, hit, stats) {
 
         if (isShotgun && (hit.distance || 0) < 30) return;
 
-        // ===== CALC =====
-
+        // CALC
         const brain = stats.brain || 0;
         const head = stats.head || 0;
         const torso = stats.torso || 0;
@@ -96,7 +118,6 @@ async function checkPlayer(client, hit, stats) {
         const legs = (stats.left_leg || 0) + (stats.right_leg || 0);
 
         const total = brain + head + torso + arms + legs;
-
         if (total < 30) return;
 
         const pct = (v) => (total > 0 ? (v / total) * 100 : 0);
@@ -117,8 +138,7 @@ async function checkPlayer(client, hit, stats) {
 
         if (!reason) return;
 
-        // ===== EMBED =====
-
+        // EMBED
         const embed = new EmbedBuilder()
             .setColor("#ff3d00")
             .setTitle("🚨 Grevbot Alert 🚨")
@@ -149,18 +169,15 @@ async function checkPlayer(client, hit, stats) {
                 text: "GrevBot statsalert 2026"
             });
 
-        // ===== SEND =====
-
-        const channels = getAlertChannels();
-
-        for (const id of channels) {
+        // SEND
+        for (const id of ALERT_CHANNEL_IDS) {
             try {
                 const channel = await client.channels.fetch(id);
                 if (channel) {
                     await channel.send({ embeds: [embed] });
                 }
             } catch (err) {
-                console.error(`Alert send failed (${id}):`, err.message);
+                console.error(`Failed to send alert to ${id}:`, err.message);
             }
         }
 
