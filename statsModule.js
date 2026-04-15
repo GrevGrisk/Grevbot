@@ -63,47 +63,65 @@ async function getStatsById(cfid) {
     return res.rows[0];
 }
 
-// ===== CHART (FIXED VERSION) =====
+// ===== CHART (FIXED LIKE YOUR FRIEND) =====
 function buildChart(stats) {
-    const entries = [
-        { label: "Brain", value: stats.brain || 0, color: "#4FC3F7" },
-        { label: "Head", value: stats.head || 0, color: "#9575CD" },
-        { label: "Torso", value: stats.torso || 0, color: "#F06292" },
-        { label: "Arms", value: (stats.left_arm || 0) + (stats.right_arm || 0), color: "#FFB74D" },
-        { label: "Legs", value: (stats.left_leg || 0) + (stats.right_leg || 0), color: "#4DB6AC" }
-    ].filter(e => e.value > 0); // 🔥 fjerner 0 verdier
+    const brain = stats.brain || 0;
+    const head = stats.head || 0;
+    const torso = stats.torso || 0;
+    const arms = (stats.left_arm || 0) + (stats.right_arm || 0);
+    const legs = (stats.left_leg || 0) + (stats.right_leg || 0);
+
+    const total = brain + head + torso + arms + legs;
+
+    const percent = (v) =>
+        total > 0 ? ((v / total) * 100).toFixed(1) : 0;
 
     const chartConfig = {
         type: "pie",
         data: {
-            labels: entries.map(e => e.label),
+            labels: ["Brain", "Head", "Torso", "Arms", "Legs"],
             datasets: [{
-                data: entries.map(e => e.value),
-                backgroundColor: entries.map(e => e.color),
-                borderColor: "#ffffff",
-                borderWidth: 4
+                data: [
+                    percent(brain),
+                    percent(head),
+                    percent(torso),
+                    percent(arms),
+                    percent(legs)
+                ],
+                backgroundColor: [
+                    "#4FC3F7",
+                    "#9575CD",
+                    "#F06292",
+                    "#FFB74D",
+                    "#4DB6AC"
+                ],
+                borderColor: "white",
+                borderWidth: 2
             }]
         },
         options: {
             plugins: {
                 legend: {
-                    display: false // 🔥 fjernet legend helt
+                    labels: {
+                        color: "white",
+                        font: {
+                            size: 18
+                        }
+                    }
                 },
                 datalabels: {
-                    color: "#000",
-                    backgroundColor: "#fff",
-                    borderRadius: 6,
-                    padding: 8,
+                    color: "black",
                     font: {
-                        size: 26,
+                        size: 24,
                         weight: "bold"
-                    }
+                    },
+                    formatter: (value) => value > 0 ? value + "%" : ""
                 }
             }
         }
     };
 
-    return `https://quickchart.io/chart?width=1000&height=700&devicePixelRatio=3&backgroundColor=transparent&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
+    return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
 }
 
 // ===== HANDLE /PROFILE =====
