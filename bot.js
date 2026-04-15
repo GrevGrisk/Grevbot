@@ -36,6 +36,9 @@ const EXCLUDED_WEAPONS = ["TriDagger"];
 
 const lastHit = new Map();
 
+// 🔥 NY: prosesser meldinger i streng rekkefølge 1:1
+let processingQueue = Promise.resolve();
+
 // ===== COMMANDS =====
 const commands = [
     new SlashCommandBuilder()
@@ -138,126 +141,160 @@ client.on("interactionCreate", async interaction => {
     }
 });
 
-// ===== MESSAGE HANDLER =====
-client.on("messageCreate", async (msg) => {
-    try {
-        if (msg.author.id === client.user.id) return;
-        if (msg.channel.id !== INPUT_CHANNEL_ID) return;
+// ===== MESSAGE PROCESSOR =====
+async function processInputMessage(msg) {
+    if (msg.author.id === client.user.id) return;
+    if (msg.channel.id !== INPUT_CHANNEL_ID) return;
 
-        const content = msg.content;
+    const content = msg.content;
 
-        const coordsVictim = getCoords(content, "Victim");
-        const coordsKiller = getCoords(content, "Killer");
-        const zVictim = getZ(content, "Victim");
-        const zKiller = getZ(content, "Killer");
+    const coordsVictim = getCoords(content, "Victim");
+    const coordsKiller = getCoords(content, "Killer");
+    const zVictim = getZ(content, "Victim");
+    const zKiller = getZ(content, "Killer");
 
-        let outputChannel = null;
-        let alertChannel = null;
+    let outputChannel = null;
+    let alertChannel = null;
 
-        try { outputChannel = await client.channels.fetch(OUTPUT_CHANNEL_ID); } catch {}
-        try { alertChannel = await client.channels.fetch(ALERT_CHANNEL_ID); } catch {}
+    try { outputChannel = await client.channels.fetch(OUTPUT_CHANNEL_ID); } catch {}
+    try { alertChannel = await client.channels.fetch(ALERT_CHANNEL_ID); } catch {}
 
-        const now = new Date();
-        const time = now.toLocaleString("no-NO");
+    const now = new Date();
+    const time = now.toLocaleString("no-NO");
 
-        const isHit = content.includes("got hit by");
-        const isKill = content.includes("got killed by");
+    const isHit = content.includes("got hit by");
+    const isKill = content.includes("got killed by");
 
-        // ===== HIT =====
-        if (isHit) {
-            const hit = parseHit(content);
-            if (!hit) return;
+    // ===== HIT =====
+    if (isHit) {
+        const hit = parseHit(content);
+        if (!hit) return;
 
-            const key = hit.victimName.toLowerCase();
+        const key = hit.victimName.toLowerCase();
 
-            if (!lastHit.has(key)) {
-                lastHit.set(key, []);
-            }
+        if (!lastHit.has(key)) {
+            lastHit.set(key, []);
+        }
 
-            lastHit.get(key).push({
-                distance: hit.distance,
-                damage: hit.damage,
-                zone: hit.zone,
-                time: Date.now()
+        lastHit.get(key).push({
+            distance: hit.distance,
+            damage: hit.damage,
+            zone: hit.zone,
+            time: Date.now()
+        });
+
+        if (outputChannel) {
+            await killfeedModule.sendHitEmbed({
+                outputChannel,
+                hit,
+                coordsKiller,
+                coordsVictim,
+                zKiller,
+                zVictim,
+                time
             });
+        }
 
-            if (outputChannel) {
-                await killfeedModule.sendHitEmbed({
-                    outputChannel,
+        const isFiltered =
+            EXCLUDED_WEAPONS.includes(hit.weapon) ||
+            parseFloat(hit.distance) < 5;
+
+        if (!isFiltered && alertChannel) {
+            try {
+                await alertsModule.handleAlerts(
                     hit,
+                    alertChannel,
                     coordsKiller,
                     coordsVictim,
                     zKiller,
-                    zVictim,
                     time
-                });
-            }
-
-            return;
-        }
-
-        // ===== KILL =====
-        if (isKill) {
-            const kill = parseKill(content);
-            if (!kill) return;
-
-            const key = kill.victimName.toLowerCase();
-
-            let last = { damage: "-", zone: "-" };
-
-            if (lastHit.has(key)) {
-                const hits = lastHit.get(key);
-
-                const match = hits
-                    .filter(h => h.distance === kill.distance)
-                    .sort((a, b) => b.time - a.time);
-
-                if (match.length > 0) {
-                    last = match[0];
-                }
+                );
+            } catch (err) {
+                console.error("Alerts error:", err);
             }
 
             try {
-                const victimCFID = kill.victimLink?.split("/").pop();
-                const killerCFID = kill.killerLink?.split("/").pop();
-
-                await pool.query(`
-                    INSERT INTO player_deaths
-                    (victim, victim_name, killer, killer_name, weapon, distance, x, y)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                `, [
-                    victimCFID,
-                    kill.victimName,
-                    killerCFID,
-                    kill.killerName,
-                    kill.weapon,
-                    kill.distance,
-                    coordsVictim?.x || null,
-                    coordsVictim?.y || null
-                ]);
+                await statsModule.handleStats(client, hit);
             } catch (err) {
-                console.error("Death insert error:", err);
+                console.error("Stats error:", err);
             }
-
-            if (outputChannel) {
-                await killfeedModule.sendKillEmbed({
-                    outputChannel,
-                    kill,
-                    last,
-                    coordsKiller,
-                    coordsVictim,
-                    zKiller,
-                    zVictim,
-                    time
-                });
-            }
-
-            return;
         }
 
-    } catch (err) {
-        console.error("MESSAGE ERROR:", err);
+        return;
     }
+
+    // ===== KILL =====
+    if (isKill) {
+        const kill = parseKill(content);
+        if (!kill) return;
+
+        const victimCFID = kill.victimLink?.split("/").pop();
+        const killerCFID = kill.killerLink?.split("/").pop();
+
+        try {
+            await pool.query(`
+                INSERT INTO player_deaths
+                (victim, victim_name, killer, killer_name, weapon, distance, x, y)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `, [
+                victimCFID,
+                kill.victimName,
+                killerCFID,
+                kill.killerName,
+                kill.weapon,
+                kill.distance,
+                coordsVictim?.x || null,
+                coordsVictim?.y || null
+            ]);
+        } catch (err) {
+            console.error("Death insert error:", err);
+        }
+
+        const key = kill.victimName.toLowerCase();
+        const killTime = Date.now();
+
+        let last = { damage: "-", zone: "-" };
+
+        if (lastHit.has(key)) {
+            const hits = lastHit.get(key);
+
+            const exact = hits.filter(h => h.distance === kill.distance);
+
+            if (exact.length > 0) {
+                const before = exact
+                    .filter(h => h.time <= killTime)
+                    .sort((a, b) => b.time - a.time);
+
+                if (before.length > 0) {
+                    last = before[0];
+                }
+            }
+        }
+
+        if (outputChannel) {
+            await killfeedModule.sendKillEmbed({
+                outputChannel,
+                kill,
+                last,
+                coordsKiller,
+                coordsVictim,
+                zKiller,
+                zVictim,
+                time
+            });
+        }
+
+        return;
+    }
+}
+
+// ===== MESSAGE HANDLER =====
+client.on("messageCreate", (msg) => {
+    processingQueue = processingQueue
+        .then(() => processInputMessage(msg))
+        .catch((err) => {
+            console.error("MESSAGE ERROR:", err);
+        });
 });
 
 client.login(TOKEN);
