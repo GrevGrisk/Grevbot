@@ -195,11 +195,7 @@ async function processInputMessage(msg) {
             });
         }
 
-        const isFiltered =
-            EXCLUDED_WEAPONS.includes(hit.weapon) ||
-            parseFloat(hit.distance) < 5;
-
-        if (!isFiltered && alertChannel) {
+        if (alertChannel) {
             try {
                 await alertsModule.handleAlerts(
                     hit,
