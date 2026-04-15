@@ -61,7 +61,7 @@ async function handleStats(client, hit) {
     }
 }
 
-// ===== GET PROFILE STATS =====
+// ===== GET PROFILE =====
 async function getStatsById(cfid) {
     const res = await pool.query(
         "SELECT * FROM player_stats WHERE player = $1",
@@ -179,9 +179,13 @@ async function handleProfile(interaction) {
                     ? `[${d.killer_name || "Unknown"}](${killerLink})`
                     : `${d.killer_name || "Unknown"}`;
 
+                const weapon = d.weapon || "-";
+                const hitzone = d.hitzone || "-";
+                const damage = d.damage || "-";
+                const distance = d.distance ? `${d.distance}m` : "-";
                 const mapText = mapLink ? ` | [Map](${mapLink})` : "";
 
-                return `💀 ${killerText} | ${d.weapon || "-"} | ${d.distance || "-"}m${mapText}`;
+                return `💀 ${killerText} | ${weapon} | ${hitzone} | ${damage} | ${distance}${mapText}`;
             }).join("\n");
         }
 
@@ -220,7 +224,7 @@ async function handleProfile(interaction) {
         await interaction.reply({ embeds: [embed] });
 
     } catch (err) {
-        console.error(err);
+        console.error("Profile error:", err);
         await interaction.reply({
             content: "Feil ved henting av stats.",
             ephemeral: true
