@@ -20,7 +20,7 @@ const SHOTGUNS = [
 ];
 
 const playerAlerts = new Map();
-const ALERT_WINDOW = 60 * 60 * 1000; // 1 time
+const ALERT_WINDOW = 60 * 60 * 1000;
 
 function buildProfileLink(cfid) {
     return `https://app.cftools.cloud/profile/${cfid}`;
@@ -83,7 +83,6 @@ async function checkPlayer(client, hit, stats) {
     try {
         if (!stats) return;
 
-        // FILTERS
         if ((hit.weapon || "").toLowerCase().includes("tridagger")) return;
 
         const isShotgun = SHOTGUNS.some(w =>
@@ -92,7 +91,6 @@ async function checkPlayer(client, hit, stats) {
 
         if (isShotgun && (hit.distance || 0) < 30) return;
 
-        // CALC
         const brain = stats.brain || 0;
         const head = stats.head || 0;
         const torso = stats.torso || 0;
@@ -120,7 +118,6 @@ async function checkPlayer(client, hit, stats) {
 
         if (!reason) return;
 
-        // ===== PROGRESSION =====
         const now = Date.now();
         const prev = playerAlerts.get(stats.player);
 
@@ -142,41 +139,36 @@ async function checkPlayer(client, hit, stats) {
             }
         }
 
-        // ===== EMBED 1 =====
-        const alertEmbed = new EmbedBuilder()
+        // 👇 pseudo center via spacing
+        const titleLine = "🚨 Grevbot Alert 🚨";
+        const alertLine = "⚠️ Suspicious hit pattern detected ⚠️";
+
+        const embed = new EmbedBuilder()
             .setColor("#ff1744")
-            .setTitle("🚨 Grevbot Alert 🚨")
             .setDescription(
-                `⚠️ Suspicious hit pattern detected\n\n` +
+                `**${titleLine}**\n` +
+                `**${alertLine}**\n\n` +
                 `${reason}\n\n` +
                 `👤 **${stats.name || stats.player}**\n` +
                 `[Open Profile](${buildProfileLink(stats.player)})\n\n` +
                 `🆔 \`${stats.player}\``
             )
+            .setImage(buildChart(stats))
             .setFooter({
                 text: "GrevBot statsalert 2026"
             });
 
-        // ===== EMBED 2 =====
-        const chartEmbed = new EmbedBuilder()
-            .setColor("#ff1744")
-            .setImage(buildChart(stats));
-
-        // ===== SEND =====
         for (const id of ALERT_CHANNEL_IDS) {
             try {
                 const channel = await client.channels.fetch(id);
                 if (channel) {
-                    await channel.send({
-                        embeds: [alertEmbed, chartEmbed]
-                    });
+                    await channel.send({ embeds: [embed] });
                 }
             } catch (err) {
                 console.error(`Failed to send alert to ${id}:`, err.message);
             }
         }
 
-        // STORE
         playerAlerts.set(stats.player, {
             time: now,
             brain: brainPct,
