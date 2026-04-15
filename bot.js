@@ -10,11 +10,7 @@ process.on("unhandledRejection", (reason) => {
 const { Client, GatewayIntentBits, SlashCommandBuilder, Routes } = require("discord.js");
 const { REST } = require("@discordjs/rest");
 
-const { Pool } = require("pg");
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-});
+const pool = require("./db"); // 🔥 endret
 
 const killfeedModule = require("./killfeedModule");
 const alertsModule = require("./alertsModule");
@@ -150,7 +146,6 @@ client.on("messageCreate", async (msg) => {
         const content = msg.content;
 
         const coordsVictim = getCoords(content, "Victim");
-        const coordsKiller = getCoords(content, "Killer");
 
         let outputChannel = null;
 
@@ -161,10 +156,8 @@ client.on("messageCreate", async (msg) => {
 
         if (isKill) kill = parseKill(content);
 
-        // ===== KILL =====
         if (kill && outputChannel) {
 
-            // 🔥 lagre death (med coords)
             const victimCFID = kill.victimLink?.split("/").pop();
             const killerCFID = kill.killerLink?.split("/").pop();
 
