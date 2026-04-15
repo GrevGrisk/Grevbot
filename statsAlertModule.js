@@ -19,14 +19,16 @@ const SHOTGUNS = [
     "Serbu Super-Shorty"
 ];
 
+// 🔥 progression storage
 const playerAlerts = new Map();
-const ALERT_WINDOW = 60 * 60 * 1000;
+
+const ALERT_WINDOW = 60 * 60 * 1000; // 1 time
 
 function buildProfileLink(cfid) {
     return `https://app.cftools.cloud/profile/${cfid}`;
 }
 
-// ===== CHART (samme som før - ikke rør) =====
+// ===== CHART =====
 function buildChart(stats) {
     const raw = [
         { label: "Brain", value: stats.brain || 0, color: "#4FC3F7" },
@@ -57,7 +59,8 @@ function buildChart(stats) {
             legend: {
                 labels: {
                     fontColor: "#ffffff",
-                    fontSize: 16
+                    fontSize: 20,
+                    fontStyle: "bold"
                 }
             },
             plugins: {
@@ -67,8 +70,11 @@ function buildChart(stats) {
                     borderRadius: 4,
                     padding: 4,
                     font: {
-                        size: 16,
+                        size: 20,
                         weight: "bold"
+                    },
+                    formatter: function(value) {
+                        return value;
                     }
                 }
             }
@@ -83,6 +89,8 @@ async function checkPlayer(client, hit, stats) {
     try {
         if (!stats) return;
 
+        // ===== FILTERS =====
+
         if ((hit.weapon || "").toLowerCase().includes("tridagger")) return;
 
         const isShotgun = SHOTGUNS.some(w =>
@@ -91,6 +99,8 @@ async function checkPlayer(client, hit, stats) {
 
         if (isShotgun && (hit.distance || 0) < 30) return;
 
+        // ===== CALC =====
+
         const brain = stats.brain || 0;
         const head = stats.head || 0;
         const torso = stats.torso || 0;
@@ -98,6 +108,7 @@ async function checkPlayer(client, hit, stats) {
         const legs = (stats.left_leg || 0) + (stats.right_leg || 0);
 
         const total = brain + head + torso + arms + legs;
+
         if (total < 30) return;
 
         const pct = (v) => (total > 0 ? (v / total) * 100 : 0);
@@ -106,17 +117,21 @@ async function checkPlayer(client, hit, stats) {
         const headPct = pct(head);
         const torsoPct = pct(torso);
 
+        // ===== THRESHOLDS =====
+
         let reason = null;
 
         if (brainPct > 3) {
-            reason = "Elevated brain hit pattern";
+            reason = "This player has an elevated brainhit pattern";
         } else if (headPct > 20) {
-            reason = "Elevated headshot pattern";
+            reason = "This player has an elevated headshot pattern";
         } else if (torsoPct > 80) {
-            reason = "Abnormal torso hit pattern";
+            reason = "This player has an abnormal torso hit pattern";
         }
 
         if (!reason) return;
+
+        // ===== PROGRESSION CHECK =====
 
         const now = Date.now();
         const prev = playerAlerts.get(stats.player);
@@ -134,26 +149,44 @@ async function checkPlayer(client, hit, stats) {
                     headIncrease < 2 &&
                     torsoIncrease < 3
                 ) {
-                    return;
+                    return; // ⛔ ikke nok endring
                 }
             }
         }
 
-        // ===== CLEAN EMBED (slik du hadde det) =====
+        // ===== EMBED =====
+
         const embed = new EmbedBuilder()
-            .setColor("#ff1744")
+            .setColor("#ff3d00")
             .setTitle("🚨 Grevbot Alert 🚨")
             .setDescription(
-                `⚠️ Suspicious hit pattern detected\n\n` +
+                `⚠️ Suspicious hit pattern Detected !! ⚠️\n\n` +
                 `${reason}\n\n` +
                 `👤 **${stats.name || stats.player}**\n` +
                 `[Open Profile](${buildProfileLink(stats.player)})\n\n` +
                 `🆔 \`${stats.player}\``
             )
+            .addFields(
+                {
+                    name: "📊 Total Shots Hit",
+                    value: `**${total}**`
+                },
+                {
+                    name: "📈 Hit Distribution (Count / %)",
+                    value:
+                        `🔵 Brain: ${brain} (${brainPct.toFixed(1)}%)\n` +
+                        `🟣 Head: ${head} (${headPct.toFixed(1)}%)\n` +
+                        `🔴 Torso: ${torso} (${torsoPct.toFixed(1)}%)\n` +
+                        `🟠 Arms: ${arms} (${pct(arms).toFixed(1)}%)\n` +
+                        `🟢 Legs: ${legs} (${pct(legs).toFixed(1)}%)`
+                }
+            )
             .setImage(buildChart(stats))
             .setFooter({
                 text: "GrevBot statsalert 2026"
             });
+
+        // ===== SEND =====
 
         for (const id of ALERT_CHANNEL_IDS) {
             try {
@@ -165,6 +198,8 @@ async function checkPlayer(client, hit, stats) {
                 console.error(`Failed to send alert to ${id}:`, err.message);
             }
         }
+
+        // ===== STORE PROGRESSION =====
 
         playerAlerts.set(stats.player, {
             time: now,
