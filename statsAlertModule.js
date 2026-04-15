@@ -26,7 +26,7 @@ function buildProfileLink(cfid) {
     return `https://app.cftools.cloud/profile/${cfid}`;
 }
 
-// ===== CHART =====
+// ===== CHART (samme som før - ikke rør) =====
 function buildChart(stats) {
     const raw = [
         { label: "Brain", value: stats.brain || 0, color: "#4FC3F7" },
@@ -139,15 +139,12 @@ async function checkPlayer(client, hit, stats) {
             }
         }
 
-        // 👇 pseudo center via spacing
-        const titleLine = "🚨 Grevbot Alert 🚨";
-        const alertLine = "⚠️ Suspicious hit pattern detected ⚠️";
-
+        // ===== CLEAN EMBED (slik du hadde det) =====
         const embed = new EmbedBuilder()
             .setColor("#ff1744")
+            .setTitle("🚨 Grevbot Alert 🚨")
             .setDescription(
-                `**${titleLine}**\n` +
-                `**${alertLine}**\n\n` +
+                `⚠️ Suspicious hit pattern detected\n\n` +
                 `${reason}\n\n` +
                 `👤 **${stats.name || stats.player}**\n` +
                 `[Open Profile](${buildProfileLink(stats.player)})\n\n` +
