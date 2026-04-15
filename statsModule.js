@@ -20,9 +20,13 @@ function buildProfileLink(cfid) {
     return `https://app.cftools.cloud/profile/${cfid}`;
 }
 
-function buildMapLink(x, y) {
-    if (!x || !y) return null;
-    return `https://dayz.ginfo.gg/#location=${x};${y}`;
+const safe = (v) => (v !== undefined && v !== null) ? String(v) : "-";
+
+function buildMapLink(death) {
+    if (!death) return null;
+    if (!death.killer_x || !death.killer_y || !death.x || !death.y) return null;
+
+    return `https://grevgrisk.github.io/dayzmap?killer=${death.killer_x},${death.killer_y}&victim=${death.x},${death.y}&weapon=${encodeURIComponent(safe(death.weapon))}&dist=${safe(death.distance)}&dmg=${safe(death.damage)}&hit=${safe(death.hitzone ?? death.zone)}`;
 }
 
 // ===== HANDLE STATS =====
@@ -180,7 +184,7 @@ async function handleProfile(interaction) {
         const arms = (stats.left_arm || 0) + (stats.right_arm || 0);
         const legs = (stats.left_leg || 0) + (stats.right_leg || 0);
 
-        const totalShots = stats.total || 0;
+        const totalShots = brain + head + torso + arms + legs;
 
         const calc = (v) =>
             totalShots > 0 ? ((v / totalShots) * 100).toFixed(1) : "0.0";
@@ -197,7 +201,7 @@ async function handleProfile(interaction) {
 
                 const weapon = d.weapon || "-";
                 const distance = d.distance ? `${d.distance}m` : "-";
-                const mapLink = buildMapLink(d.x, d.y);
+                const mapLink = buildMapLink(d);
                 const mapText = mapLink ? ` | [Map](${mapLink})` : "";
 
                 return `💀 ${killerText} | ${weapon} | ${distance}${mapText}`;
