@@ -10,9 +10,7 @@ process.on("unhandledRejection", (reason) => {
 const { Client, GatewayIntentBits, SlashCommandBuilder, Routes } = require("discord.js");
 const { REST } = require("@discordjs/rest");
 
-// 🔥 DB connection
 const { Pool } = require("pg");
-
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
@@ -52,11 +50,9 @@ const commands = [
                 .setDescription("CF ID")
                 .setRequired(true)
         ),
-
     new SlashCommandBuilder()
         .setName("testalert")
         .setDescription("Trigger a test GrevBot alert")
-
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -155,121 +151,37 @@ client.on("messageCreate", async (msg) => {
 
         const coordsVictim = getCoords(content, "Victim");
         const coordsKiller = getCoords(content, "Killer");
-        const zVictim = getZ(content, "Victim");
-        const zKiller = getZ(content, "Killer");
 
         let outputChannel = null;
-        let alertChannel = null;
 
         try { outputChannel = await client.channels.fetch(OUTPUT_CHANNEL_ID); } catch {}
-        try { alertChannel = await client.channels.fetch(ALERT_CHANNEL_ID); } catch {}
-
-        const now = new Date();
-        const time = now.toLocaleString("no-NO");
 
         const isKill = content.includes("got killed by");
-        const isHit = content.includes("got hit by");
-
-        let hit = null;
         let kill = null;
 
         if (isKill) kill = parseKill(content);
-        else if (isHit) hit = parseHit(content);
-
-        // ===== HIT =====
-        if (hit) {
-            const key = hit.victimName.toLowerCase();
-
-            if (!lastHit.has(key)) {
-                lastHit.set(key, []);
-            }
-
-            lastHit.get(key).push({
-                distance: hit.distance,
-                damage: hit.damage,
-                zone: hit.zone,
-                time: Date.now()
-            });
-
-            if (outputChannel) {
-                await killfeedModule.sendHitEmbed({
-                    outputChannel,
-                    hit,
-                    coordsKiller,
-                    coordsVictim,
-                    zKiller,
-                    zVictim,
-                    time
-                });
-            }
-
-            const isFiltered =
-                EXCLUDED_WEAPONS.includes(hit.weapon) ||
-                parseFloat(hit.distance) < 5;
-
-            if (!isFiltered && alertChannel) {
-                try {
-                    await alertsModule.handleAlerts(
-                        hit,
-                        alertChannel,
-                        coordsKiller,
-                        coordsVictim,
-                        zKiller,
-                        time
-                    );
-                } catch (err) {
-                    console.error("Alerts error:", err);
-                }
-
-                try {
-                    await statsModule.handleStats(client, hit);
-                } catch (err) {
-                    console.error("Stats error:", err);
-                }
-            }
-
-            return;
-        }
 
         // ===== KILL =====
         if (kill && outputChannel) {
-            const key = kill.victimName.toLowerCase();
-            const killTime = Date.now();
 
-            let last = { damage: "-", zone: "-" };
-
-            if (lastHit.has(key)) {
-                const hits = lastHit.get(key);
-
-                const exact = hits.filter(h => h.distance === kill.distance);
-
-                if (exact.length > 0) {
-                    const before = exact
-                        .filter(h => h.time <= killTime)
-                        .sort((a, b) => b.time - a.time);
-
-                    if (before.length > 0) {
-                        last = before[0];
-                    }
-                }
-            }
-
-            // 🔥 lagre death
+            // 🔥 lagre death (med coords)
             const victimCFID = kill.victimLink?.split("/").pop();
             const killerCFID = kill.killerLink?.split("/").pop();
 
             try {
                 await pool.query(`
                     INSERT INTO player_deaths
-                    (victim, victim_name, killer, killer_name, weapon, distance)
-                    VALUES ($1, $2, $3, $4, $5, $6)
+                    (victim, victim_name, killer, killer_name, weapon, distance, x, y)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 `, [
                     victimCFID,
                     kill.victimName,
                     killerCFID,
                     kill.killerName,
                     kill.weapon,
-                    kill.distance
+                    kill.distance,
+                    coordsVictim?.x || null,
+                    coordsVictim?.y || null
                 ]);
             } catch (err) {
                 console.error("Death insert error:", err);
@@ -277,13 +189,7 @@ client.on("messageCreate", async (msg) => {
 
             await killfeedModule.sendKillEmbed({
                 outputChannel,
-                kill,
-                last,
-                coordsKiller,
-                coordsVictim,
-                zKiller,
-                zVictim,
-                time
+                kill
             });
         }
 
@@ -293,23 +199,3 @@ client.on("messageCreate", async (msg) => {
 });
 
 client.login(TOKEN);
-
-// ===== KEEP ALIVE =====
-const http = require("http");
-const https = require("https");
-
-const PORT = process.env.PORT || 3000;
-const PUBLIC_URL = "https://grevbot-production.up.railway.app";
-
-http.createServer((req, res) => {
-    res.writeHead(200);
-    res.end("OK");
-}).listen(PORT);
-
-setInterval(() => {
-    https.get(PUBLIC_URL, () => {}).on("error", () => {});
-}, 25000);
-
-setInterval(() => {
-    console.log("BOT STILL RUNNING", new Date().toISOString());
-}, 10000);
