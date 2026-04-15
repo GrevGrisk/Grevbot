@@ -59,7 +59,7 @@ function parseHit(text) {
         killerName: killerMatch ? killerMatch[1] : rawKiller,
         killerLink: killerMatch ? killerMatch[2] : null,
         weapon: match[3].trim(),
-        distance: match[4],
+        distance: match[4], // STRING
         damage: match[5],
         zone: match[6].toLowerCase()
     };
@@ -82,7 +82,7 @@ function parseKill(text) {
         killerName: killerMatch ? killerMatch[1] : rawKiller,
         killerLink: killerMatch ? killerMatch[2] : null,
         weapon: match[3].trim(),
-        distance: match[4]
+        distance: match[4] // STRING
     };
 }
 
@@ -116,33 +116,32 @@ client.on("messageCreate", async (msg) => {
         const now = new Date();
         const time = now.toLocaleString("no-NO");
 
-        // 🔥 FIX: tydelig hit/kill detection
-        const isHit = content.includes("got hit by");
         const isKill = content.includes("got killed by");
+        const isHit = content.includes("got hit by");
 
-        const hit = isHit ? parseHit(content) : null;
-        const kill = isKill ? parseKill(content) : null;
+        let hit = null;
+        let kill = null;
+
+        if (isKill) {
+            kill = parseKill(content);
+        } else if (isHit) {
+            hit = parseHit(content);
+        }
 
         // ===== HIT =====
         if (hit) {
-            console.log("PARSED HIT:", hit.killerName, hit.zone);
-
             const key = hit.victimName.toLowerCase();
 
             if (!lastHit.has(key)) {
                 lastHit.set(key, []);
             }
 
-            const arr = lastHit.get(key);
-
-            arr.push({
+            lastHit.get(key).push({
+                distance: hit.distance,
                 damage: hit.damage,
                 zone: hit.zone,
-                distance: hit.distance,
                 time: Date.now()
             });
-
-            if (arr.length > 5) arr.shift();
 
             if (outputChannel) {
                 await killfeedModule.sendHitEmbed({
@@ -192,24 +191,27 @@ client.on("messageCreate", async (msg) => {
         // ===== KILL =====
         if (kill && outputChannel) {
             const key = kill.victimName.toLowerCase();
-            let last = {};
+            const killTime = Date.now();
+
+            let last = {
+                damage: "-",
+                zone: "-"
+            };
 
             if (lastHit.has(key)) {
                 const hits = lastHit.get(key);
 
-                let match = null;
-                let smallestDiff = Infinity;
+                const exact = hits.filter(h => h.distance === kill.distance);
 
-                for (const h of hits) {
-                    const diff = Math.abs(parseFloat(h.distance) - parseFloat(kill.distance));
-                    if (diff < smallestDiff) {
-                        smallestDiff = diff;
-                        match = h;
+                if (exact.length > 0) {
+                    const before = exact
+                        .filter(h => h.time <= killTime)
+                        .sort((a, b) => b.time - a.time);
+
+                    if (before.length > 0) {
+                        last = before[0];
                     }
                 }
-
-                last = match || hits[hits.length - 1] || {};
-                lastHit.delete(key);
             }
 
             await killfeedModule.sendKillEmbed({
@@ -241,9 +243,7 @@ const PUBLIC_URL = "https://grevbot-production.up.railway.app";
 http.createServer((req, res) => {
     res.writeHead(200);
     res.end("OK");
-}).listen(PORT, () => {
-    console.log("Keep-alive running on port", PORT);
-});
+}).listen(PORT);
 
 setInterval(() => {
     https.get(PUBLIC_URL, () => {}).on("error", () => {});
