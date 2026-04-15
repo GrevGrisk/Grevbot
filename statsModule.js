@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require("discord.js");
 const { Pool } = require("pg");
+const statsAlert = require("./statsAlertModule"); // 🔥 kobling til alerts
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -16,7 +17,7 @@ function buildProfileLink(cfid) {
 }
 
 // ===== HANDLE STATS =====
-async function handleStats(hit) {
+async function handleStats(client, hit) {
     try {
         const killerId = extractCFID(hit.killerLink);
         if (!killerId) return;
@@ -35,6 +36,7 @@ async function handleStats(hit) {
 
         const column = columnMap[zone] || "torso";
 
+        // ===== INSERT / UPDATE =====
         await pool.query(`
             INSERT INTO player_stats (player, name, ${column})
             VALUES ($1, $2, 1)
@@ -42,7 +44,16 @@ async function handleStats(hit) {
             DO UPDATE SET
                 name = EXCLUDED.name,
                 ${column} = player_stats.${column} + 1
-        `, [killerId, hit.killerName]);
+        `, [
+            killerId,
+            hit.killerName
+        ]);
+
+        // ===== HENT OPPDATERT STATS =====
+        const updatedStats = await getStatsById(killerId);
+
+        // ===== KJØR ALERT CHECK =====
+        await statsAlert.checkPlayer(client, hit, updatedStats);
 
     } catch (err) {
         console.error("Stats DB error:", err);
@@ -140,17 +151,17 @@ async function handleProfile(interaction) {
             totalShots > 0 ? ((v / totalShots) * 100).toFixed(1) : "0.0";
 
         const embed = new EmbedBuilder()
-            .setColor("#00c853") // 🔥 grønn kant
+            .setColor("#00c853")
             .setTitle("GrevBot Player Profile Analysis")
             .setDescription(
                 `👤 **${stats.name || cfid}**\n` +
-                `[Open Profile](${buildProfileLink(cfid)})\n\n` + // spacing
+                `[Open Profile](${buildProfileLink(cfid)})\n\n` +
                 `🆔 \`${cfid}\``
             )
             .addFields(
                 {
                     name: "📊 Total Shots Hit",
-                    value: `**${totalShots}**\n`, // spacing
+                    value: `**${totalShots}**\n`
                 },
                 {
                     name: "📈 Hit Distribution (Count / %)",
