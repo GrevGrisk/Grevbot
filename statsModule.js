@@ -63,68 +63,47 @@ async function getStatsById(cfid) {
     return res.rows[0];
 }
 
-// ===== CHART =====
+// ===== CHART (FIXED VERSION) =====
 function buildChart(stats) {
-    const brain = stats.brain || 0;
-    const head = stats.head || 0;
-    const torso = stats.torso || 0;
-    const arms = (stats.left_arm || 0) + (stats.right_arm || 0);
-    const legs = (stats.left_leg || 0) + (stats.right_leg || 0);
-
-    const labels = ["Brain", "Head", "Torso", "Arms", "Legs"];
-    const data = [brain, head, torso, arms, legs];
+    const entries = [
+        { label: "Brain", value: stats.brain || 0, color: "#4FC3F7" },
+        { label: "Head", value: stats.head || 0, color: "#9575CD" },
+        { label: "Torso", value: stats.torso || 0, color: "#F06292" },
+        { label: "Arms", value: (stats.left_arm || 0) + (stats.right_arm || 0), color: "#FFB74D" },
+        { label: "Legs", value: (stats.left_leg || 0) + (stats.right_leg || 0), color: "#4DB6AC" }
+    ].filter(e => e.value > 0); // 🔥 fjerner 0 verdier
 
     const chartConfig = {
         type: "pie",
         data: {
-            labels,
+            labels: entries.map(e => e.label),
             datasets: [{
-                data,
-                backgroundColor: [
-                    "#4FC3F7",
-                    "#9575CD",
-                    "#F06292",
-                    "#FFB74D",
-                    "#4DB6AC"
-                ],
+                data: entries.map(e => e.value),
+                backgroundColor: entries.map(e => e.color),
                 borderColor: "#ffffff",
-                borderWidth: 3
+                borderWidth: 4
             }]
         },
         options: {
-            layout: {
-                padding: 30
-            },
             plugins: {
                 legend: {
-                    position: "top",
-                    labels: {
-                        color: "#ffffff",
-                        boxWidth: 30,
-                        boxHeight: 15,
-                        padding: 25,
-                        font: {
-                            size: 20,
-                            weight: "bold"
-                        }
-                    }
+                    display: false // 🔥 fjernet legend helt
                 },
                 datalabels: {
-                    color: "#000000",
-                    backgroundColor: "#ffffff",
-                    borderRadius: 4,
-                    padding: 6,
+                    color: "#000",
+                    backgroundColor: "#fff",
+                    borderRadius: 6,
+                    padding: 8,
                     font: {
-                        size: 18,
+                        size: 26,
                         weight: "bold"
-                    },
-                    formatter: (value) => value > 0 ? value : ""
+                    }
                 }
             }
         }
     };
 
-    return `https://quickchart.io/chart?width=900&height=650&devicePixelRatio=2&backgroundColor=transparent&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
+    return `https://quickchart.io/chart?width=1000&height=700&devicePixelRatio=3&backgroundColor=transparent&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
 }
 
 // ===== HANDLE /PROFILE =====
@@ -149,10 +128,10 @@ async function handleProfile(interaction) {
         const arms = (stats.left_arm || 0) + (stats.right_arm || 0);
         const legs = (stats.left_leg || 0) + (stats.right_leg || 0);
 
-        const distributionTotal = brain + head + torso + arms + legs;
+        const total = brain + head + torso + arms + legs;
 
         const calc = (v) =>
-            distributionTotal > 0 ? ((v / distributionTotal) * 100).toFixed(1) : "0.0";
+            total > 0 ? ((v / total) * 100).toFixed(1) : "0.0";
 
         const profileUrl = buildProfileLink(cfid);
         const chartUrl = buildChart(stats);
