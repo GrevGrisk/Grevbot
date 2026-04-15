@@ -72,14 +72,19 @@ async function getStatsById(cfid) {
 
 // ===== GET LAST DEATHS =====
 async function getLastDeaths(cfid) {
-    const res = await pool.query(`
-        SELECT * FROM player_deaths
-        WHERE victim = $1
-        ORDER BY created_at DESC
-        LIMIT 5
-    `, [cfid]);
+    try {
+        const res = await pool.query(`
+            SELECT * FROM player_deaths
+            WHERE victim = $1
+            ORDER BY created_at DESC
+            LIMIT 5
+        `, [cfid]);
 
-    return res.rows;
+        return res.rows;
+    } catch (err) {
+        console.error("Death fetch error:", err);
+        return []; // 🔥 viktig: aldri crash profile
+    }
 }
 
 // ===== CHART =====
@@ -179,13 +184,9 @@ async function handleProfile(interaction) {
                     ? `[${d.killer_name || "Unknown"}](${killerLink})`
                     : `${d.killer_name || "Unknown"}`;
 
-                const weapon = d.weapon || "-";
-                const hitzone = d.hitzone || "-";
-                const damage = d.damage || "-";
-                const distance = d.distance ? `${d.distance}m` : "-";
                 const mapText = mapLink ? ` | [Map](${mapLink})` : "";
 
-                return `💀 ${killerText} | ${weapon} | ${hitzone} | ${damage} | ${distance}${mapText}`;
+                return `💀 ${killerText} | ${d.weapon || "-"} | ${d.distance || "-"}m${mapText}`;
             }).join("\n");
         }
 
@@ -210,13 +211,13 @@ async function handleProfile(interaction) {
                         `🔴 Torso: ${torso} (${calc(torso)}%)\n` +
                         `🟠 Arms: ${arms} (${calc(arms)}%)\n` +
                         `🟢 Legs: ${legs} (${calc(legs)}%)\n`
-                },
-                {
-                    name: "☠️ Last Deaths",
-                    value: deathsText
                 }
             )
             .setImage(buildChart(stats))
+            .addFields({
+                name: "☠️ Last Deaths",
+                value: deathsText
+            })
             .setFooter({
                 text: "Grevbot Player-analysis- 2026"
             });
