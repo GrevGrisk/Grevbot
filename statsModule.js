@@ -7,13 +7,11 @@ const statsAlert = require("./statsAlertModule");
 function extractCFID(link) {
     if (!link) return null;
 
-    // håndter markdown [name](url)
     const match = link.match(/\((https?:\/\/[^\)]+)\)/);
     if (match) {
         link = match[1];
     }
 
-    // hent CFID fra URL
     const parts = link.split("/");
     return parts[parts.length - 1];
 }
@@ -27,7 +25,7 @@ function buildMapLink(x, y) {
     return `https://dayz.ginfo.gg/#location=${x};${y}`;
 }
 
-// ===== HANDLE STATS (LIVE UPDATES) =====
+// ===== HANDLE STATS =====
 
 async function handleStats(client, hit) {
     try {
@@ -51,12 +49,13 @@ async function handleStats(client, hit) {
         const column = columnMap[zone] || "torso";
 
         await pool.query(`
-            INSERT INTO player_stats (player, name, ${column})
-            VALUES ($1, $2, 1)
+            INSERT INTO player_stats (player, name, ${column}, total)
+            VALUES ($1, $2, 1, 1)
             ON CONFLICT (player)
             DO UPDATE SET
                 name = EXCLUDED.name,
-                ${column} = player_stats.${column} + 1
+                ${column} = player_stats.${column} + 1,
+                total = player_stats.total + 1
         `, [
             killerId,
             hit.killerName || killerId
@@ -152,7 +151,7 @@ function buildChart(stats) {
     return `https://quickchart.io/chart?devicePixelRatio=3&width=800&height=600&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
 }
 
-// ===== PROFILE COMMAND =====
+// ===== PROFILE =====
 
 async function handleProfile(interaction) {
     const cfid = interaction.options.getString("cfid");
@@ -170,7 +169,8 @@ async function handleProfile(interaction) {
                 left_arm: 0,
                 right_arm: 0,
                 left_leg: 0,
-                right_leg: 0
+                right_leg: 0,
+                total: 0
             };
         }
 
@@ -180,7 +180,7 @@ async function handleProfile(interaction) {
         const arms = (stats.left_arm || 0) + (stats.right_arm || 0);
         const legs = (stats.left_leg || 0) + (stats.right_leg || 0);
 
-        const totalShots = brain + head + torso + arms + legs;
+        const totalShots = stats.total || 0;
 
         const calc = (v) =>
             totalShots > 0 ? ((v / totalShots) * 100).toFixed(1) : "0.0";
