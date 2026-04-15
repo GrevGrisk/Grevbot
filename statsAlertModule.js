@@ -19,16 +19,13 @@ const SHOTGUNS = [
     "Serbu Super-Shorty"
 ];
 
-// 🔥 progression storage
 const playerAlerts = new Map();
-
-const ALERT_WINDOW = 60 * 60 * 1000; // 1 time
+const ALERT_WINDOW = 60 * 60 * 1000;
 
 function buildProfileLink(cfid) {
     return `https://app.cftools.cloud/profile/${cfid}`;
 }
 
-// ===== CHART =====
 function buildChart(stats) {
     const raw = [
         { label: "Brain", value: stats.brain || 0, color: "#4FC3F7" },
@@ -89,17 +86,15 @@ async function checkPlayer(client, hit, stats) {
     try {
         if (!stats) return;
 
-        // ===== FILTERS =====
+        const isTest = hit?.isTest;
 
-        if ((hit.weapon || "").toLowerCase().includes("tridagger")) return;
+        if (!isTest && (hit.weapon || "").toLowerCase().includes("tridagger")) return;
 
         const isShotgun = SHOTGUNS.some(w =>
             (hit.weapon || "").toLowerCase().includes(w.toLowerCase())
         );
 
-        if (isShotgun && (hit.distance || 0) < 30) return;
-
-        // ===== CALC =====
+        if (!isTest && isShotgun && (hit.distance || 0) < 30) return;
 
         const brain = stats.brain || 0;
         const head = stats.head || 0;
@@ -109,15 +104,13 @@ async function checkPlayer(client, hit, stats) {
 
         const total = brain + head + torso + arms + legs;
 
-        if (total < 30) return;
+        if (!isTest && total < 30) return;
 
         const pct = (v) => (total > 0 ? (v / total) * 100 : 0);
 
         const brainPct = pct(brain);
         const headPct = pct(head);
         const torsoPct = pct(torso);
-
-        // ===== THRESHOLDS =====
 
         let reason = null;
 
@@ -129,14 +122,12 @@ async function checkPlayer(client, hit, stats) {
             reason = "This player has an abnormal torso hit pattern";
         }
 
-        if (!reason) return;
-
-        // ===== PROGRESSION CHECK =====
+        if (!reason && !isTest) return;
 
         const now = Date.now();
         const prev = playerAlerts.get(stats.player);
 
-        if (prev) {
+        if (!isTest && prev) {
             const withinWindow = (now - prev.time) < ALERT_WINDOW;
 
             if (withinWindow) {
@@ -149,12 +140,14 @@ async function checkPlayer(client, hit, stats) {
                     headIncrease < 2 &&
                     torsoIncrease < 3
                 ) {
-                    return; // ⛔ ikke nok endring
+                    return;
                 }
             }
         }
 
-        // ===== EMBED =====
+        if (isTest) {
+            reason = "This is a test alert";
+        }
 
         const embed = new EmbedBuilder()
             .setColor("#ff3d00")
@@ -186,8 +179,6 @@ async function checkPlayer(client, hit, stats) {
                 text: "GrevBot statsalert 2026"
             });
 
-        // ===== SEND =====
-
         for (const id of ALERT_CHANNEL_IDS) {
             try {
                 const channel = await client.channels.fetch(id);
@@ -195,11 +186,9 @@ async function checkPlayer(client, hit, stats) {
                     await channel.send({ embeds: [embed] });
                 }
             } catch (err) {
-                console.error(`Failed to send alert to ${id}:`, err.message);
+                console.error(err);
             }
         }
-
-        // ===== STORE PROGRESSION =====
 
         playerAlerts.set(stats.player, {
             time: now,
