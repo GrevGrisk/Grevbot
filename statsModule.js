@@ -83,7 +83,7 @@ async function getLastDeaths(cfid) {
         return res.rows;
     } catch (err) {
         console.error("Death fetch error:", err);
-        return []; // 🔥 viktig: aldri crash profile
+        return [];
     }
 }
 
@@ -196,7 +196,8 @@ async function handleProfile(interaction) {
             .setDescription(
                 `👤 **${stats.name || cfid}**\n` +
                 `[Open Profile](${buildProfileLink(cfid)})\n\n` +
-                `🆔 \`${cfid}\``
+                `🆔 \`${cfid}\`\n\n` +
+                `☠️ **Last Deaths**\n${deathsText}`
             )
             .addFields(
                 {
@@ -214,10 +215,6 @@ async function handleProfile(interaction) {
                 }
             )
             .setImage(buildChart(stats))
-            .addFields({
-                name: "☠️ Last Deaths",
-                value: deathsText
-            })
             .setFooter({
                 text: "Grevbot Player-analysis- 2026"
             });
