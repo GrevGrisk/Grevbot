@@ -6,7 +6,7 @@ const { EmbedBuilder } = require("discord.js");
 ========================================
 */
 const ALERT_CHANNEL_IDS = [
-    "PUT_CHANNEL_ID_HERE"
+    "1493801257838710814"
 ];
 /*
 ========================================
