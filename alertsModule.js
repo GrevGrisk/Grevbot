@@ -5,6 +5,37 @@ const headshotTracker = new Map();
 const brainTracker = new Map();
 const recentHits = new Map();
 
+// ===== WEAPON FILTER =====
+const MELEE_KEYWORDS = [
+    "dagger", "knife", "blade", "hatchet", "axe", "sledge",
+    "hammer", "mace", "bat", "crowbar", "shovel",
+    "pickaxe", "pipe", "wrench", "sword", "machete", "melee"
+];
+
+const SHOTGUN_KEYWORDS = [
+    "shotgun",
+    "bk-43", "bk43",
+    "bk-133", "bk133",
+    "mp133", "mp-133",
+    "vaiga", "saiga",
+    "repeater shotgun",
+    "double barrel"
+];
+
+function normalizeWeapon(name) {
+    return (name || "").toLowerCase();
+}
+
+function isMelee(weapon) {
+    const w = normalizeWeapon(weapon);
+    return MELEE_KEYWORDS.some(k => w.includes(k));
+}
+
+function isShotgun(weapon) {
+    const w = normalizeWeapon(weapon);
+    return SHOTGUN_KEYWORDS.some(k => w.includes(k));
+}
+
 // ===== SAFE NAME =====
 function safeName(name) {
     return (name || "unknown").toLowerCase();
@@ -89,7 +120,14 @@ function formatCoords(coords, z) {
 // ===== MAIN =====
 async function handleAlerts(hit, alertChannel, coordsKiller, coordsVictim, zKiller, time) {
     try {
-        if (!hit || !hit.killerName) return; // 🔥 STOP CRASH
+        if (!hit || !hit.killerName) return;
+
+        const distance = parseFloat(hit.distance) || 0;
+
+        // ===== FILTER =====
+        if (isMelee(hit.weapon)) return;
+        if (isShotgun(hit.weapon) && distance < 30) return;
+        if (distance < 5) return;
 
         const victims = storeRecentHit(hit);
 
