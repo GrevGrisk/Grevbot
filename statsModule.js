@@ -54,8 +54,6 @@ async function handleStats(client, hit) {
         ]);
 
         const updatedStats = await getStatsById(killerId);
-
-        // 🔥 ALERT CHECK
         await statsAlert.checkPlayer(client, hit, updatedStats);
 
     } catch (err) {
@@ -152,13 +150,20 @@ async function handleProfile(interaction) {
     const cfid = interaction.options.getString("cfid");
 
     try {
-        const stats = await getStatsById(cfid);
+        let stats = await getStatsById(cfid);
 
         if (!stats) {
-            return interaction.reply({
-                content: "Ingen data funnet.",
-                ephemeral: true
-            });
+            stats = {
+                player: cfid,
+                name: cfid,
+                brain: 0,
+                head: 0,
+                torso: 0,
+                left_arm: 0,
+                right_arm: 0,
+                left_leg: 0,
+                right_leg: 0
+            };
         }
 
         const brain = stats.brain || 0;
@@ -174,18 +179,20 @@ async function handleProfile(interaction) {
 
         const deaths = await getLastDeaths(cfid);
 
-        let deathsText = "No recent deaths";
+        let deathsText = "-";
 
         if (deaths.length > 0) {
             deathsText = deaths.map(d => {
-                const killerLink = d.killer
-                    ? `[${d.killer_name || "Unknown"}](https://app.cftools.cloud/profile/${d.killer})`
+                const killerText = d.killer
+                    ? `[${d.killer_name || "Unknown"}](${buildProfileLink(d.killer)})`
                     : `${d.killer_name || "Unknown"}`;
 
+                const weapon = d.weapon || "-";
+                const distance = d.distance ? `${d.distance}m` : "-";
                 const mapLink = buildMapLink(d.x, d.y);
                 const mapText = mapLink ? ` | [Map](${mapLink})` : "";
 
-                return `💀 ${killerLink} | ${d.weapon || "-"} | ${d.distance || "-"}m${mapText}`;
+                return `💀 ${killerText} | ${weapon} | ${distance}${mapText}`;
             }).join("\n");
         }
 
@@ -195,8 +202,7 @@ async function handleProfile(interaction) {
             .setDescription(
                 `👤 **${stats.name || cfid}**\n` +
                 `[Open Profile](${buildProfileLink(cfid)})\n\n` +
-                `🆔 \`${cfid}\`\n\n` +
-                `☠️ **Last Deaths**\n${deathsText}`
+                `🆔 \`${cfid}\``
             )
             .addFields(
                 {
@@ -214,6 +220,10 @@ async function handleProfile(interaction) {
                 }
             )
             .setImage(buildChart(stats))
+            .addFields({
+                name: "☠️ Last Deaths",
+                value: deathsText
+            })
             .setFooter({
                 text: "Grevbot Player-analysis- 2026"
             });
@@ -234,4 +244,3 @@ module.exports = {
     getStatsById,
     handleProfile
 };
- 
