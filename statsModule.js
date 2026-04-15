@@ -72,9 +72,8 @@ function buildChart(stats) {
         { label: "Legs", value: (stats.left_leg || 0) + (stats.right_leg || 0), color: "#4DB6AC" }
     ];
 
-    const total = raw.reduce((sum, e) => sum + e.value, 0);
-
     const filtered = raw.filter(e => e.value > 0);
+    const total = filtered.reduce((sum, e) => sum + e.value, 0);
 
     const pct = (v) =>
         total > 0 ? parseFloat(((v / total) * 100).toFixed(1)) : 0;
@@ -104,13 +103,13 @@ function buildChart(stats) {
                     color: "#000000",
                     backgroundColor: "#ffffff",
                     borderRadius: 4,
-                    padding: 6,
+                    padding: 4,
                     font: {
-                        size: 26,
+                        size: 20,
                         weight: "bold"
                     },
                     formatter: function(value) {
-                        return value + "%";
+                        return value > 0 ? value : "";
                     }
                 }
             }
@@ -140,10 +139,10 @@ async function handleProfile(interaction) {
         const arms = (stats.left_arm || 0) + (stats.right_arm || 0);
         const legs = (stats.left_leg || 0) + (stats.right_leg || 0);
 
-        const total = brain + head + torso + arms + legs;
+        const totalShots = brain + head + torso + arms + legs;
 
         const calc = (v) =>
-            total > 0 ? ((v / total) * 100).toFixed(1) : "0.0";
+            totalShots > 0 ? ((v / totalShots) * 100).toFixed(1) : "0.0";
 
         const embed = new EmbedBuilder()
             .setColor("#2b2d31")
@@ -155,7 +154,7 @@ async function handleProfile(interaction) {
             .addFields(
                 {
                     name: "📊 Total Shots Hit",
-                    value: `**${stats.total || 0}**`
+                    value: `**${totalShots}**`
                 },
                 {
                     name: "📈 Hit Distribution (Count / %)",
@@ -176,6 +175,10 @@ async function handleProfile(interaction) {
 
     } catch (err) {
         console.error(err);
+        await interaction.reply({
+            content: "Feil ved henting av stats.",
+            ephemeral: true
+        });
     }
 }
 
