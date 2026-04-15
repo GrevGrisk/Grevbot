@@ -1,6 +1,6 @@
 const { EmbedBuilder } = require("discord.js");
 const { Pool } = require("pg");
-const statsAlert = require("./statsAlertModule"); // 🔥 kobling til alerts
+const statsAlert = require("./statsAlertModule");
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -14,6 +14,11 @@ function extractCFID(link) {
 
 function buildProfileLink(cfid) {
     return `https://app.cftools.cloud/profile/${cfid}`;
+}
+
+function buildMapLink(x, y) {
+    if (!x || !y) return null;
+    return `https://dayz.ginfo.gg/#location=${x};${y}`;
 }
 
 // ===== HANDLE STATS =====
@@ -36,7 +41,6 @@ async function handleStats(client, hit) {
 
         const column = columnMap[zone] || "torso";
 
-        // ===== INSERT / UPDATE =====
         await pool.query(`
             INSERT INTO player_stats (player, name, ${column})
             VALUES ($1, $2, 1)
@@ -49,10 +53,7 @@ async function handleStats(client, hit) {
             hit.killerName
         ]);
 
-        // ===== HENT OPPDATERT STATS =====
         const updatedStats = await getStatsById(killerId);
-
-        // ===== KJØR ALERT CHECK =====
         await statsAlert.checkPlayer(client, hit, updatedStats);
 
     } catch (err) {
@@ -60,13 +61,25 @@ async function handleStats(client, hit) {
     }
 }
 
-// ===== GET PROFILE =====
+// ===== GET PROFILE STATS =====
 async function getStatsById(cfid) {
     const res = await pool.query(
         "SELECT * FROM player_stats WHERE player = $1",
         [cfid]
     );
     return res.rows[0];
+}
+
+// ===== GET LAST DEATHS =====
+async function getLastDeaths(cfid) {
+    const res = await pool.query(`
+        SELECT * FROM player_deaths
+        WHERE victim = $1
+        ORDER BY created_at DESC
+        LIMIT 5
+    `, [cfid]);
+
+    return res.rows;
 }
 
 // ===== CHART =====
@@ -150,6 +163,28 @@ async function handleProfile(interaction) {
         const calc = (v) =>
             totalShots > 0 ? ((v / totalShots) * 100).toFixed(1) : "0.0";
 
+        const deaths = await getLastDeaths(cfid);
+
+        let deathsText = "No recent deaths";
+
+        if (deaths.length > 0) {
+            deathsText = deaths.map(d => {
+                const killerLink = d.killer
+                    ? `https://app.cftools.cloud/profile/${d.killer}`
+                    : null;
+
+                const mapLink = buildMapLink(d.x, d.y);
+
+                const killerText = killerLink
+                    ? `[${d.killer_name || "Unknown"}](${killerLink})`
+                    : `${d.killer_name || "Unknown"}`;
+
+                const mapText = mapLink ? ` | [Map](${mapLink})` : "";
+
+                return `💀 ${killerText} | ${d.weapon || "-"} | ${d.distance || "-"}m${mapText}`;
+            }).join("\n");
+        }
+
         const embed = new EmbedBuilder()
             .setColor("#00c853")
             .setTitle("GrevBot Player Profile Analysis")
@@ -171,6 +206,10 @@ async function handleProfile(interaction) {
                         `🔴 Torso: ${torso} (${calc(torso)}%)\n` +
                         `🟠 Arms: ${arms} (${calc(arms)}%)\n` +
                         `🟢 Legs: ${legs} (${calc(legs)}%)\n`
+                },
+                {
+                    name: "☠️ Last Deaths",
+                    value: deathsText
                 }
             )
             .setImage(buildChart(stats))
