@@ -6,7 +6,16 @@ const statsAlert = require("./statsAlertModule");
 
 function extractCFID(link) {
     if (!link) return null;
-    return link.split("/").pop();
+
+    // håndter markdown [name](url)
+    const match = link.match(/\((https?:\/\/[^\)]+)\)/);
+    if (match) {
+        link = match[1];
+    }
+
+    // hent CFID fra URL
+    const parts = link.split("/");
+    return parts[parts.length - 1];
 }
 
 function buildProfileLink(cfid) {
@@ -50,7 +59,7 @@ async function handleStats(client, hit) {
                 ${column} = player_stats.${column} + 1
         `, [
             killerId,
-            hit.killerName
+            hit.killerName || killerId
         ]);
 
         const updatedStats = await getStatsById(killerId);
