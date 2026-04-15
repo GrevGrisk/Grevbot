@@ -1,5 +1,8 @@
 const { EmbedBuilder } = require("discord.js");
 
+// 🔥 SAFE FIX (kun lagt til)
+const safe = (v) => (v !== undefined && v !== null) ? String(v) : "-";
+
 // ===== HIT (GRØNN) =====
 async function sendHitEmbed({ outputChannel, hit, coordsKiller, coordsVictim, zKiller, zVictim, time }) {
     const mapLink =
@@ -11,16 +14,16 @@ async function sendHitEmbed({ outputChannel, hit, coordsKiller, coordsVictim, zK
         .setColor(0x00ff00) // 🟢 HIT = GRØNN
         .setTitle("Grevbot Line-of-sight analysis")
         .addFields(
-            { name: "Killer", value: hit.killerLink ? `[${hit.killerName}](${hit.killerLink})` : hit.killerName, inline: true },
-            { name: "Victim", value: hit.victimLink ? `[${hit.victimName}](${hit.victimLink})` : hit.victimName, inline: true },
-            { name: "Weapon", value: hit.weapon },
-            { name: "Hitzone", value: hit.zone || "-" , inline: true },
-            { name: "Damage", value: hit.damage || "-", inline: true },
-            { name: "Distance", value: `${hit.distance} m`, inline: true },
-            { name: "Killer Coordinates", value: coordsKiller ? `${coordsKiller.x}, ${zKiller}, ${coordsKiller.y}` : "-" },
-            { name: "Victim Coordinates", value: coordsVictim ? `${coordsVictim.x}, ${zVictim}, ${coordsVictim.y}` : "-" },
+            { name: "Killer", value: hit.killerLink ? `[${safe(hit.killerName)}](${hit.killerLink})` : safe(hit.killerName), inline: true },
+            { name: "Victim", value: hit.victimLink ? `[${safe(hit.victimName)}](${hit.victimLink})` : safe(hit.victimName), inline: true },
+            { name: "Weapon", value: safe(hit.weapon) },
+            { name: "Hitzone", value: safe(hit.zone), inline: true },
+            { name: "Damage", value: safe(hit.damage), inline: true },
+            { name: "Distance", value: `${safe(hit.distance)} m`, inline: true },
+            { name: "Killer Coordinates", value: coordsKiller ? `${safe(coordsKiller.x)}, ${safe(zKiller)}, ${safe(coordsKiller.y)}` : "-" },
+            { name: "Victim Coordinates", value: coordsVictim ? `${safe(coordsVictim.x)}, ${safe(zVictim)}, ${safe(coordsVictim.y)}` : "-" },
             { name: "Map", value: mapLink ? `[View in map](${mapLink})` : "-" },
-            { name: "Time", value: time }
+            { name: "Time", value: safe(time) }
         );
 
     await outputChannel.send({ embeds: [embed] });
@@ -30,23 +33,23 @@ async function sendHitEmbed({ outputChannel, hit, coordsKiller, coordsVictim, zK
 async function sendKillEmbed({ outputChannel, kill, last, coordsKiller, coordsVictim, zKiller, zVictim, time }) {
     const mapLink =
         coordsKiller && coordsVictim
-            ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(kill.weapon)}&dist=${kill.distance}&dmg=${last.damage}&hit=${last.zone}`
+            ? `https://grevgrisk.github.io/dayzmap?killer=${coordsKiller.x},${coordsKiller.y}&victim=${coordsVictim.x},${coordsVictim.y}&weapon=${encodeURIComponent(kill.weapon)}&dist=${kill.distance}&dmg=${safe(last?.damage)}&hit=${safe(last?.zone)}`
             : null;
 
     const embed = new EmbedBuilder()
         .setColor(0xff0000) // 🔴 KILL = RØD
         .setTitle("Grevbot Line-of-sight analysis")
         .addFields(
-            { name: "Killer", value: kill.killerLink ? `[${kill.killerName}](${kill.killerLink})` : kill.killerName, inline: true },
-            { name: "Victim", value: kill.victimLink ? `[${kill.victimName}](${kill.victimLink})` : kill.victimName, inline: true },
-            { name: "Weapon", value: kill.weapon },
-            { name: "Hitzone", value: last?.zone || "-", inline: true },
-            { name: "Damage", value: last?.damage || "-", inline: true },
-            { name: "Distance", value: `${kill.distance} m`, inline: true },
-            { name: "Killer Coordinates", value: coordsKiller ? `${coordsKiller.x}, ${zKiller}, ${coordsKiller.y}` : "-" },
-            { name: "Victim Coordinates", value: coordsVictim ? `${coordsVictim.x}, ${zVictim}, ${coordsVictim.y}` : "-" },
+            { name: "Killer", value: kill.killerLink ? `[${safe(kill.killerName)}](${kill.killerLink})` : safe(kill.killerName), inline: true },
+            { name: "Victim", value: kill.victimLink ? `[${safe(kill.victimName)}](${kill.victimLink})` : safe(kill.victimName), inline: true },
+            { name: "Weapon", value: safe(kill.weapon) },
+            { name: "Hitzone", value: safe(last?.zone), inline: true },
+            { name: "Damage", value: safe(last?.damage), inline: true },
+            { name: "Distance", value: `${safe(kill.distance)} m`, inline: true },
+            { name: "Killer Coordinates", value: coordsKiller ? `${safe(coordsKiller.x)}, ${safe(zKiller)}, ${safe(coordsKiller.y)}` : "-" },
+            { name: "Victim Coordinates", value: coordsVictim ? `${safe(coordsVictim.x)}, ${safe(zVictim)}, ${safe(coordsVictim.y)}` : "-" },
             { name: "Map", value: mapLink ? `[View in map](${mapLink})` : "-" },
-            { name: "Time", value: time }
+            { name: "Time", value: safe(time) }
         );
 
     await outputChannel.send({ embeds: [embed] });
