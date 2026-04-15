@@ -6,14 +6,12 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
-// ===== CFID EXTRACT =====
 function extractCFID(link) {
     if (!link) return null;
     const parts = link.split("/");
     return parts[parts.length - 1];
 }
 
-// ===== PROFILE LINK =====
 function buildProfileLink(cfid) {
     return `https://app.cftools.cloud/profile/${cfid}`;
 }
@@ -39,15 +37,14 @@ async function handleStats(hit) {
         const column = columnMap[zone] || "torso";
 
         await pool.query(`
-            INSERT INTO player_stats (player, name, ${column}, total)
-            VALUES ($1, $2, 1, 1)
+            INSERT INTO player_stats (player, ${column}, total)
+            VALUES ($1, 1, 1)
             ON CONFLICT (player)
             DO UPDATE SET
                 ${column} = player_stats.${column} + 1,
                 total = player_stats.total + 1
         `, [
-            killerId,
-            hit.killerName
+            killerId
         ]);
 
     } catch (err) {
@@ -64,32 +61,28 @@ async function getStatsById(cfid) {
     return res.rows[0];
 }
 
-// ===== BUILD CHART URL =====
+// ===== CHART =====
 function buildChart(stats) {
     const data = [
         stats.brain || 0,
         stats.head || 0,
         stats.torso || 0,
-        stats.left_arm || 0,
-        stats.right_arm || 0,
-        stats.left_leg || 0,
-        stats.right_leg || 0
+        (stats.left_arm || 0) + (stats.right_arm || 0),
+        (stats.left_leg || 0) + (stats.right_leg || 0)
     ];
 
     const chartConfig = {
         type: "pie",
         data: {
-            labels: ["Brain", "Head", "Torso", "L Arm", "R Arm", "L Leg", "R Leg"],
+            labels: ["Brain", "Head", "Torso", "Arms", "Legs"],
             datasets: [{
                 data,
                 backgroundColor: [
-                    "#ff0000",
-                    "#ff6666",
-                    "#ffa500",
-                    "#00bfff",
-                    "#1e90ff",
-                    "#32cd32",
-                    "#228b22"
+                    "#4FC3F7",
+                    "#9575CD",
+                    "#F06292",
+                    "#FFB74D",
+                    "#4DB6AC"
                 ]
             }]
         }
@@ -114,27 +107,39 @@ async function handleProfile(interaction) {
 
         const total = stats.total || 0;
 
-        const percent = (value) =>
-            total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+        const calc = (v) => total > 0 ? ((v / total) * 100).toFixed(1) : "0.0";
 
-        const chartUrl = buildChart(stats);
+        const brain = stats.brain || 0;
+        const head = stats.head || 0;
+        const torso = stats.torso || 0;
+        const arms = (stats.left_arm || 0) + (stats.right_arm || 0);
+        const legs = (stats.left_leg || 0) + (stats.right_leg || 0);
+
         const profileUrl = buildProfileLink(cfid);
+        const chartUrl = buildChart(stats);
+
+        const distribution =
+`🔵 Brain  : ${brain} (${calc(brain)}%)
+🟣 Head   : ${head} (${calc(head)}%)
+🔴 Torso  : ${torso} (${calc(torso)}%)
+🟠 Arms   : ${arms} (${calc(arms)}%)
+🟢 Legs   : ${legs} (${calc(legs)}%)`;
 
         const embed = new EmbedBuilder()
-            .setTitle(`Profile: [${stats.name || cfid}](${profileUrl})`)
-            .setDescription(`CFID: \`${cfid}\``)
+            .setColor("#2b2d31")
+            .setTitle("📊 PLAYER PROFILE")
+            .setDescription(
+                `👤 **[${cfid}](${profileUrl})**\n` +
+                `🆔 \`${cfid}\``
+            )
             .addFields(
-                { name: "Total Hits", value: String(total) },
                 {
-                    name: "Distribution",
-                    value:
-                        `Brain: ${stats.brain} (${percent(stats.brain)}%)\n` +
-                        `Head: ${stats.head} (${percent(stats.head)}%)\n` +
-                        `Torso: ${stats.torso} (${percent(stats.torso)}%)\n` +
-                        `Left arm: ${stats.left_arm} (${percent(stats.left_arm)}%)\n` +
-                        `Right arm: ${stats.right_arm} (${percent(stats.right_arm)}%)\n` +
-                        `Left leg: ${stats.left_leg} (${percent(stats.left_leg)}%)\n` +
-                        `Right leg: ${stats.right_leg} (${percent(stats.right_leg)}%)`
+                    name: "📊 Total Shots Hit",
+                    value: `**${total}**`
+                },
+                {
+                    name: "📈 Hit Distribution (Count / %)",
+                    value: distribution
                 }
             )
             .setImage(chartUrl);
