@@ -138,6 +138,7 @@ client.on("interactionCreate", async interaction => {
     }
 });
 
+// ===== MESSAGE HANDLER =====
 client.on("messageCreate", async (msg) => {
     try {
         if (msg.author.id === client.user.id) return;
@@ -151,16 +152,65 @@ client.on("messageCreate", async (msg) => {
         const zKiller = getZ(content, "Killer");
 
         let outputChannel = null;
+        let alertChannel = null;
 
         try { outputChannel = await client.channels.fetch(OUTPUT_CHANNEL_ID); } catch {}
+        try { alertChannel = await client.channels.fetch(ALERT_CHANNEL_ID); } catch {}
 
         const now = new Date();
         const time = now.toLocaleString("no-NO");
 
         const isKill = content.includes("got killed by");
+        const isHit = content.includes("got hit by");
+
+        let hit = null;
         let kill = null;
 
         if (isKill) kill = parseKill(content);
+        else if (isHit) hit = parseHit(content);
+
+        // ===== HIT =====
+        if (hit) {
+            const key = hit.victimName.toLowerCase();
+
+            if (!lastHit.has(key)) {
+                lastHit.set(key, []);
+            }
+
+            lastHit.get(key).push({
+                distance: hit.distance,
+                damage: hit.damage,
+                zone: hit.zone,
+                time: Date.now()
+            });
+
+            const isFiltered =
+                EXCLUDED_WEAPONS.includes(hit.weapon) ||
+                parseFloat(hit.distance) < 5;
+
+            if (!isFiltered && alertChannel) {
+                try {
+                    await alertsModule.handleAlerts(
+                        hit,
+                        alertChannel,
+                        coordsKiller,
+                        coordsVictim,
+                        zKiller,
+                        time
+                    );
+                } catch (err) {
+                    console.error("Alerts error:", err);
+                }
+
+                try {
+                    await statsModule.handleStats(client, hit);
+                } catch (err) {
+                    console.error("Stats error:", err);
+                }
+            }
+
+            return;
+        }
 
         // ===== KILL =====
         if (kill && outputChannel) {
@@ -168,7 +218,6 @@ client.on("messageCreate", async (msg) => {
             const victimCFID = kill.victimLink?.split("/").pop();
             const killerCFID = kill.killerLink?.split("/").pop();
 
-            // 🔥 DB INSERT
             try {
                 await pool.query(`
                     INSERT INTO player_deaths
@@ -188,7 +237,6 @@ client.on("messageCreate", async (msg) => {
                 console.error("Death insert error:", err);
             }
 
-            // 🔥 LAST HIT LOGIC
             const key = kill.victimName.toLowerCase();
             const killTime = Date.now();
 
@@ -210,7 +258,6 @@ client.on("messageCreate", async (msg) => {
                 }
             }
 
-            // 🔥 FIXED CALL
             await killfeedModule.sendKillEmbed({
                 outputChannel,
                 kill,
