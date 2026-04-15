@@ -10,7 +10,7 @@ process.on("unhandledRejection", (reason) => {
 const { Client, GatewayIntentBits } = require("discord.js");
 const killfeedModule = require("./killfeedModule");
 const alertsModule = require("./alertsModule");
-const statsModule = require("./statsModule");
+const statsModule = require("./statsModule"); // ✅ aktiv
 
 const client = new Client({
     intents: [
@@ -59,7 +59,7 @@ function parseHit(text) {
         killerName: killerMatch ? killerMatch[1] : rawKiller,
         killerLink: killerMatch ? killerMatch[2] : null,
         weapon: match[3].trim(),
-        distance: match[4], // STRING
+        distance: match[4],
         damage: match[5],
         zone: match[6].toLowerCase()
     };
@@ -82,7 +82,7 @@ function parseKill(text) {
         killerName: killerMatch ? killerMatch[1] : rawKiller,
         killerLink: killerMatch ? killerMatch[2] : null,
         weapon: match[3].trim(),
-        distance: match[4] // STRING
+        distance: match[4]
     };
 }
 
@@ -173,6 +173,7 @@ client.on("messageCreate", async (msg) => {
                     console.error("Alerts error:", err);
                 }
 
+                // ✅ statsModule aktiv + beskyttet
                 try {
                     await statsModule.handleStats(
                         hit,
