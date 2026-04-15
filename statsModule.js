@@ -1,10 +1,5 @@
-const { EmbedBuilder, AttachmentBuilder } = require("discord.js");
+const { EmbedBuilder } = require("discord.js");
 const { Pool } = require("pg");
-const { ChartJSNodeCanvas } = require("chartjs-node-canvas");
-
-const width = 400;
-const height = 400;
-const chartCanvas = new ChartJSNodeCanvas({ width, height });
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -18,7 +13,7 @@ function extractCFID(link) {
     return parts[parts.length - 1];
 }
 
-// ===== BUILD PROFILE LINK =====
+// ===== PROFILE LINK =====
 function buildProfileLink(cfid) {
     return `https://app.cftools.cloud/profile/${cfid}`;
 }
@@ -69,8 +64,8 @@ async function getStatsById(cfid) {
     return res.rows[0];
 }
 
-// ===== CHART =====
-async function generateChart(stats) {
+// ===== BUILD CHART URL =====
+function buildChart(stats) {
     const data = [
         stats.brain || 0,
         stats.head || 0,
@@ -81,18 +76,10 @@ async function generateChart(stats) {
         stats.right_leg || 0
     ];
 
-    const configuration = {
+    const chartConfig = {
         type: "pie",
         data: {
-            labels: [
-                "Brain",
-                "Head",
-                "Torso",
-                "Left Arm",
-                "Right Arm",
-                "Left Leg",
-                "Right Leg"
-            ],
+            labels: ["Brain", "Head", "Torso", "L Arm", "R Arm", "L Leg", "R Leg"],
             datasets: [{
                 data,
                 backgroundColor: [
@@ -108,7 +95,7 @@ async function generateChart(stats) {
         }
     };
 
-    return await chartCanvas.renderToBuffer(configuration);
+    return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
 }
 
 // ===== HANDLE /PROFILE =====
@@ -130,9 +117,7 @@ async function handleProfile(interaction) {
         const percent = (value) =>
             total > 0 ? ((value / total) * 100).toFixed(1) : 0;
 
-        const chartBuffer = await generateChart(stats);
-        const attachment = new AttachmentBuilder(chartBuffer, { name: "chart.png" });
-
+        const chartUrl = buildChart(stats);
         const profileUrl = buildProfileLink(cfid);
 
         const embed = new EmbedBuilder()
@@ -152,12 +137,9 @@ async function handleProfile(interaction) {
                         `Right leg: ${stats.right_leg} (${percent(stats.right_leg)}%)`
                 }
             )
-            .setImage("attachment://chart.png");
+            .setImage(chartUrl);
 
-        await interaction.reply({
-            embeds: [embed],
-            files: [attachment]
-        });
+        await interaction.reply({ embeds: [embed] });
 
     } catch (err) {
         console.error("Profile error:", err);
