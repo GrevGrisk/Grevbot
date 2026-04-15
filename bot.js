@@ -10,7 +10,7 @@ process.on("unhandledRejection", (reason) => {
 const { Client, GatewayIntentBits, SlashCommandBuilder, Routes } = require("discord.js");
 const { REST } = require("@discordjs/rest");
 
-const pool = require("./db"); // 🔥 endret
+const pool = require("./db");
 
 const killfeedModule = require("./killfeedModule");
 const alertsModule = require("./alertsModule");
@@ -146,21 +146,29 @@ client.on("messageCreate", async (msg) => {
         const content = msg.content;
 
         const coordsVictim = getCoords(content, "Victim");
+        const coordsKiller = getCoords(content, "Killer");
+        const zVictim = getZ(content, "Victim");
+        const zKiller = getZ(content, "Killer");
 
         let outputChannel = null;
 
         try { outputChannel = await client.channels.fetch(OUTPUT_CHANNEL_ID); } catch {}
+
+        const now = new Date();
+        const time = now.toLocaleString("no-NO");
 
         const isKill = content.includes("got killed by");
         let kill = null;
 
         if (isKill) kill = parseKill(content);
 
+        // ===== KILL =====
         if (kill && outputChannel) {
 
             const victimCFID = kill.victimLink?.split("/").pop();
             const killerCFID = kill.killerLink?.split("/").pop();
 
+            // 🔥 DB INSERT
             try {
                 await pool.query(`
                     INSERT INTO player_deaths
@@ -180,9 +188,38 @@ client.on("messageCreate", async (msg) => {
                 console.error("Death insert error:", err);
             }
 
+            // 🔥 LAST HIT LOGIC
+            const key = kill.victimName.toLowerCase();
+            const killTime = Date.now();
+
+            let last = { damage: "-", zone: "-" };
+
+            if (lastHit.has(key)) {
+                const hits = lastHit.get(key);
+
+                const exact = hits.filter(h => h.distance === kill.distance);
+
+                if (exact.length > 0) {
+                    const before = exact
+                        .filter(h => h.time <= killTime)
+                        .sort((a, b) => b.time - a.time);
+
+                    if (before.length > 0) {
+                        last = before[0];
+                    }
+                }
+            }
+
+            // 🔥 FIXED CALL
             await killfeedModule.sendKillEmbed({
                 outputChannel,
-                kill
+                kill,
+                last,
+                coordsKiller,
+                coordsVictim,
+                zKiller,
+                zVictim,
+                time
             });
         }
 
