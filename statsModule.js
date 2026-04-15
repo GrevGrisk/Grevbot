@@ -6,38 +6,43 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
-// ===== HANDLE STATS (HIT EVENTS) =====
+// ===== CFID EXTRACT =====
+function extractCFID(link) {
+    if (!link) return null;
+    const parts = link.split("/");
+    return parts[parts.length - 1];
+}
+
+// ===== HANDLE STATS =====
 async function handleStats(hit) {
     try {
-        const killerId = hit.killerLink;
-        const victimId = hit.victimLink;
+        const killerId = extractCFID(hit.killerLink);
+        if (!killerId) return;
 
-        if (!killerId || !victimId) return;
+        const zone = hit.zone;
 
-        // killer stats
+        const columnMap = {
+            brain: "brain",
+            head: "head",
+            torso: "torso",
+            leftarm: "left_arm",
+            rightarm: "right_arm",
+            leftleg: "left_leg",
+            rightleg: "right_leg"
+        };
+
+        const column = columnMap[zone] || "torso";
+
         await pool.query(`
-            INSERT INTO player_stats (cfid, name, kills, headshots)
-            VALUES ($1, $2, 1, $3)
-            ON CONFLICT (cfid)
+            INSERT INTO player_stats (player, name, ${column}, total)
+            VALUES ($1, $2, 1, 1)
+            ON CONFLICT (player)
             DO UPDATE SET
-                kills = player_stats.kills + 1,
-                headshots = player_stats.headshots + $3
+                ${column} = player_stats.${column} + 1,
+                total = player_stats.total + 1
         `, [
             killerId,
-            hit.killerName,
-            hit.zone === "head" ? 1 : 0
-        ]);
-
-        // victim stats
-        await pool.query(`
-            INSERT INTO player_stats (cfid, name, deaths)
-            VALUES ($1, $2, 1)
-            ON CONFLICT (cfid)
-            DO UPDATE SET
-                deaths = player_stats.deaths + 1
-        `, [
-            victimId,
-            hit.victimName
+            hit.killerName
         ]);
 
     } catch (err) {
@@ -48,7 +53,7 @@ async function handleStats(hit) {
 // ===== GET PROFILE =====
 async function getStatsById(cfid) {
     const res = await pool.query(
-        "SELECT * FROM player_stats WHERE cfid = $1",
+        "SELECT * FROM player_stats WHERE player = $1",
         [cfid]
     );
     return res.rows[0];
@@ -68,17 +73,17 @@ async function handleProfile(interaction) {
             });
         }
 
-        const kd = stats.deaths > 0
-            ? (stats.kills / stats.deaths).toFixed(2)
-            : stats.kills;
-
         const embed = new EmbedBuilder()
             .setTitle(`Profile: ${stats.name || cfid}`)
             .addFields(
-                { name: "Kills", value: String(stats.kills || 0), inline: true },
-                { name: "Deaths", value: String(stats.deaths || 0), inline: true },
-                { name: "K/D", value: String(kd), inline: true },
-                { name: "Headshots", value: String(stats.headshots || 0), inline: true }
+                { name: "Total Hits", value: String(stats.total || 0), inline: true },
+                { name: "Head", value: String(stats.head || 0), inline: true },
+                { name: "Brain", value: String(stats.brain || 0), inline: true },
+                { name: "Torso", value: String(stats.torso || 0), inline: true },
+                { name: "L Arm", value: String(stats.left_arm || 0), inline: true },
+                { name: "R Arm", value: String(stats.right_arm || 0), inline: true },
+                { name: "L Leg", value: String(stats.left_leg || 0), inline: true },
+                { name: "R Leg", value: String(stats.right_leg || 0), inline: true }
             );
 
         await interaction.reply({ embeds: [embed] });
