@@ -20,8 +20,8 @@ function buildProfileLink(cfid) {
     return `https://app.cftools.cloud/profile/${cfid}`;
 }
 
-// 🔥 FIXED MAP LINK (LOS + riktig feltnavn støtte)
-function buildMapLink(death) {
+// 🔥 FIXED MAP LINK (LOS + SHORT MODE FOR PROFILE)
+function buildMapLink(death, short = false) {
     if (!death) return null;
 
     const killerX = death.killer_x ?? death.killerX ?? death.kx;
@@ -31,9 +31,14 @@ function buildMapLink(death) {
 
     if (!killerX || !killerY || !victimX || !victimY) return null;
 
+    // 👉 PROFILE = SHORT LINK (hindrer 1024 crash)
+    if (short) {
+        return `https://dayz.ginfo.gg/#location=${victimX};${victimY}`;
+    }
+
+    // 👉 KILLFEED = FULL LOS LINK
     const weapon = death.weapon || "-";
     const distance = death.distance || "-";
-
     const damage = death.damage ?? "-";
     const hitzone = death.hitzone ?? death.zone ?? "-";
 
@@ -213,16 +218,14 @@ async function handleProfile(interaction) {
                 const weapon = d.weapon || "-";
                 const distance = d.distance ? `${d.distance}m` : "-";
 
-                const mapLink = (d.x && d.y)
-                    ? `https://dayz.ginfo.gg/#location=${d.x};${d.y}`
-                    : null;
+                // 🔥 FIX: bruker short maplink
+                const mapLink = buildMapLink(d, true);
 
                 const mapText = mapLink ? ` | [Map](${mapLink})` : "";
 
                 return `💀 ${killerText} | ${weapon} | ${distance}${mapText}`;
             });
 
-            // 🔥 1024-safe
             let buffer = "";
             for (const line of lines) {
                 if ((buffer + line + "\n").length > 1024) break;
