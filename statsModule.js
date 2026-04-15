@@ -20,13 +20,23 @@ function buildProfileLink(cfid) {
     return `https://app.cftools.cloud/profile/${cfid}`;
 }
 
-const safe = (v) => (v !== undefined && v !== null) ? String(v) : "-";
-
+// 🔥 FIXED MAP LINK (LOS + riktig feltnavn støtte)
 function buildMapLink(death) {
     if (!death) return null;
-    if (!death.killer_x || !death.killer_y || !death.x || !death.y) return null;
 
-    return `https://grevgrisk.github.io/dayzmap?killer=${death.killer_x},${death.killer_y}&victim=${death.x},${death.y}&weapon=${encodeURIComponent(safe(death.weapon))}&dist=${safe(death.distance)}&dmg=${safe(death.damage)}&hit=${safe(death.hitzone ?? death.zone)}`;
+    const killerX = death.killer_x ?? death.killerX ?? death.kx;
+    const killerY = death.killer_y ?? death.killerY ?? death.ky;
+    const victimX = death.x ?? death.victim_x ?? death.victimX ?? death.vx;
+    const victimY = death.y ?? death.victim_y ?? death.victimY ?? death.vy;
+
+    if (!killerX || !killerY || !victimX || !victimY) return null;
+
+    const weapon = death.weapon || "-";
+    const distance = death.distance || "-";
+    const damage = death.damage || "-";
+    const hitzone = death.hitzone || death.zone || "-";
+
+    return `https://grevgrisk.github.io/dayzmap?killer=${killerX},${killerY}&victim=${victimX},${victimY}&weapon=${encodeURIComponent(weapon)}&dist=${distance}&dmg=${damage}&hit=${encodeURIComponent(hitzone)}`;
 }
 
 // ===== HANDLE STATS =====
