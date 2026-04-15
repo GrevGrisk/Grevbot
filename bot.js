@@ -166,8 +166,9 @@ client.on("messageCreate", async (msg) => {
         let hit = null;
         let kill = null;
 
+        // 🔥 FIX: ingen else if
+        if (isHit) hit = parseHit(content);
         if (isKill) kill = parseKill(content);
-        else if (isHit) hit = parseHit(content);
 
         // ===== HIT =====
         if (hit) {
@@ -209,7 +210,7 @@ client.on("messageCreate", async (msg) => {
                 }
             }
 
-            return;
+            return; // 🔥 viktig
         }
 
         // ===== KILL =====
