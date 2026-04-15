@@ -234,8 +234,8 @@ async function processInputMessage(msg) {
         try {
             await pool.query(`
                 INSERT INTO player_deaths
-                (victim, victim_name, killer, killer_name, weapon, distance, x, y)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                (victim, victim_name, killer, killer_name, weapon, distance, x, y, killer_x, killer_y)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             `, [
                 victimCFID,
                 kill.victimName,
@@ -244,7 +244,9 @@ async function processInputMessage(msg) {
                 kill.weapon,
                 kill.distance,
                 coordsVictim?.x || null,
-                coordsVictim?.y || null
+                coordsVictim?.y || null,
+                coordsKiller?.x || null,
+                coordsKiller?.y || null
             ]);
         } catch (err) {
             console.error("Death insert error:", err);
