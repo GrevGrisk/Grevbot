@@ -70,20 +70,9 @@ function buildChart(stats) {
     const torso = stats.torso || 0;
     const arms = (stats.left_arm || 0) + (stats.right_arm || 0);
     const legs = (stats.left_leg || 0) + (stats.right_leg || 0);
-    const total = stats.total || 0;
-
-    const shownTotal = brain + head + torso + arms + legs;
-    const other = Math.max(0, total - shownTotal);
 
     const labels = ["Brain", "Head", "Torso", "Arms", "Legs"];
     const data = [brain, head, torso, arms, legs];
-    const colors = ["#4FC3F7", "#9575CD", "#F06292", "#FFB74D", "#4DB6AC"];
-
-    if (other > 0) {
-        labels.push("Other");
-        data.push(other);
-        colors.push("#B0BEC5");
-    }
 
     const chartConfig = {
         type: "pie",
@@ -91,7 +80,7 @@ function buildChart(stats) {
             labels,
             datasets: [{
                 data,
-                backgroundColor: colors,
+                backgroundColor: ["#4FC3F7", "#9575CD", "#F06292", "#FFB74D", "#4DB6AC"],
                 borderColor: "#1e1e1e",
                 borderWidth: 2
             }]
@@ -130,7 +119,7 @@ async function handleProfile(interaction) {
             });
         }
 
-        const total = stats.total || 0;
+        const totalShots = stats.total || 0;
 
         const brain = stats.brain || 0;
         const head = stats.head || 0;
@@ -138,24 +127,20 @@ async function handleProfile(interaction) {
         const arms = (stats.left_arm || 0) + (stats.right_arm || 0);
         const legs = (stats.left_leg || 0) + (stats.right_leg || 0);
 
-        const shownTotal = brain + head + torso + arms + legs;
-        const other = Math.max(0, total - shownTotal);
+        const distributionTotal = brain + head + torso + arms + legs;
 
-        const calc = (v) => total > 0 ? ((v / total) * 100).toFixed(1) : "0.0";
+        const calc = (v) =>
+            distributionTotal > 0 ? ((v / distributionTotal) * 100).toFixed(1) : "0.0";
 
         const profileUrl = buildProfileLink(cfid);
         const chartUrl = buildChart(stats);
 
-        let distribution =
+        const distribution =
             `🔵 Brain: ${brain} (${calc(brain)}%)\n` +
             `🟣 Head: ${head} (${calc(head)}%)\n` +
             `🔴 Torso: ${torso} (${calc(torso)}%)\n` +
             `🟠 Arms: ${arms} (${calc(arms)}%)\n` +
             `🟢 Legs: ${legs} (${calc(legs)}%)`;
-
-        if (other > 0) {
-            distribution += `\n⚪ Other: ${other} (${calc(other)}%)`;
-        }
 
         const embed = new EmbedBuilder()
             .setColor("#2b2d31")
@@ -167,7 +152,7 @@ async function handleProfile(interaction) {
             .addFields(
                 {
                     name: "📊 Total Shots Hit",
-                    value: `**${total}**`
+                    value: `**${totalShots}**`
                 },
                 {
                     name: "📈 Hit Distribution (Count / %)",
