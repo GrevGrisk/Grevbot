@@ -7,7 +7,6 @@
   },
   "dependencies": {
     "discord.js": "^14.0.0",
-    "pg": "^8.11.0",
-    "chartjs-node-canvas": "^4.1.7"
+    "pg": "^8.11.0"
   }
 }
