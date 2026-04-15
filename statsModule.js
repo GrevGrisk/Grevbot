@@ -89,7 +89,7 @@ function buildChart(stats) {
             legend: {
                 labels: {
                     fontColor: "#ffffff",
-                    fontSize: 20, // 🔥 større igjen
+                    fontSize: 20,
                     fontStyle: "bold"
                 }
             },
@@ -140,17 +140,17 @@ async function handleProfile(interaction) {
             totalShots > 0 ? ((v / totalShots) * 100).toFixed(1) : "0.0";
 
         const embed = new EmbedBuilder()
-            .setColor("#2b2d31")
+            .setColor("#00c853") // 🔥 grønn kant
             .setTitle("GrevBot Player Profile Analysis")
             .setDescription(
-                `👤 **${stats.name || cfid}**\n` + // 🔥 større visuelt
-                `[Open Profile](${buildProfileLink(cfid)})\n` +
+                `👤 **${stats.name || cfid}**\n` +
+                `[Open Profile](${buildProfileLink(cfid)})\n\n` + // spacing
                 `🆔 \`${cfid}\``
             )
             .addFields(
                 {
                     name: "📊 Total Shots Hit",
-                    value: `**${totalShots}**`
+                    value: `**${totalShots}**\n`, // spacing
                 },
                 {
                     name: "📈 Hit Distribution (Count / %)",
@@ -159,7 +159,7 @@ async function handleProfile(interaction) {
                         `🟣 Head: ${head} (${calc(head)}%)\n` +
                         `🔴 Torso: ${torso} (${calc(torso)}%)\n` +
                         `🟠 Arms: ${arms} (${calc(arms)}%)\n` +
-                        `🟢 Legs: ${legs} (${calc(legs)}%)`
+                        `🟢 Legs: ${legs} (${calc(legs)}%)\n`
                 }
             )
             .setImage(buildChart(stats))
