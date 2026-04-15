@@ -7,7 +7,7 @@ const recentHits = new Map();
 
 // ===== WEAPON FILTER =====
 const MELEE_KEYWORDS = [
-    "dagger", "knife", "blade", "hatchet", "axe", "sledge",
+    "TriDagger", "knife", "blade", "hatchet", "axe", "sledge",
     "hammer", "mace", "bat", "crowbar", "shovel",
     "pickaxe", "pipe", "wrench", "sword", "machete", "melee"
 ];
@@ -19,7 +19,10 @@ const SHOTGUN_KEYWORDS = [
     "mp133", "mp-133",
     "vaiga", "saiga",
     "repeater shotgun",
-    "double barrel"
+    "double barrel", "R12",
+    "Serbu Super Shorty", 
+    "M870", "SPAS-12",
+    
 ];
 
 function normalizeWeapon(name) {
