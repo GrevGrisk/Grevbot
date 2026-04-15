@@ -36,17 +36,13 @@ async function handleStats(hit) {
         const column = columnMap[zone] || "torso";
 
         await pool.query(`
-            INSERT INTO player_stats (player, name, ${column}, total)
-            VALUES ($1, $2, 1, 1)
+            INSERT INTO player_stats (player, name, ${column})
+            VALUES ($1, $2, 1)
             ON CONFLICT (player)
             DO UPDATE SET
                 name = EXCLUDED.name,
-                ${column} = player_stats.${column} + 1,
-                total = player_stats.total + 1
-        `, [
-            killerId,
-            hit.killerName
-        ]);
+                ${column} = player_stats.${column} + 1
+        `, [killerId, hit.killerName]);
 
     } catch (err) {
         console.error("Stats DB error:", err);
@@ -93,9 +89,8 @@ function buildChart(stats) {
             legend: {
                 labels: {
                     fontColor: "#ffffff",
-                    fontSize: 16,
-                    fontStyle: "bold",
-                    fontFamily: "Arial"
+                    fontSize: 20, // 🔥 større igjen
+                    fontStyle: "bold"
                 }
             },
             plugins: {
@@ -109,7 +104,7 @@ function buildChart(stats) {
                         weight: "bold"
                     },
                     formatter: function(value) {
-                        return value > 0 ? value : "";
+                        return value;
                     }
                 }
             }
@@ -148,7 +143,8 @@ async function handleProfile(interaction) {
             .setColor("#2b2d31")
             .setTitle("GrevBot Player Profile Analysis")
             .setDescription(
-                `👤 **[${stats.name || cfid}](${buildProfileLink(cfid)})**\n` +
+                `👤 **${stats.name || cfid}**\n` + // 🔥 større visuelt
+                `[Open Profile](${buildProfileLink(cfid)})\n` +
                 `🆔 \`${cfid}\``
             )
             .addFields(
