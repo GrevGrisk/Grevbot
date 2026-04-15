@@ -1,6 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
 const { Pool } = require("pg");
-const https = require("https");
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -15,53 +14,6 @@ function extractCFID(link) {
 
 function buildProfileLink(cfid) {
     return `https://app.cftools.cloud/profile/${cfid}`;
-}
-
-function fetchText(url) {
-    return new Promise((resolve, reject) => {
-        const req = https.get(url, (res) => {
-            let data = "";
-
-            res.on("data", (chunk) => {
-                data += chunk;
-            });
-
-            res.on("end", () => {
-                resolve(data);
-            });
-        });
-
-        req.on("error", reject);
-        req.setTimeout(5000, () => {
-            req.destroy(new Error("Request timeout"));
-        });
-    });
-}
-
-async function fetchPlayerName(cfid) {
-    try {
-        const html = await fetchText(buildProfileLink(cfid));
-
-        const ogTitle =
-            html.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/i) ||
-            html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:title"/i);
-
-        if (ogTitle && ogTitle[1]) {
-            const title = ogTitle[1].trim();
-            if (title) return title.replace(/\s*\|\s*CFTOOLS.*$/i, "").trim();
-        }
-
-        const titleTag = html.match(/<title>([^<]+)<\/title>/i);
-        if (titleTag && titleTag[1]) {
-            const title = titleTag[1].trim();
-            if (title) return title.replace(/\s*\|\s*CFTOOLS.*$/i, "").trim();
-        }
-
-        return cfid;
-    } catch (err) {
-        console.error("Player name fetch error:", err);
-        return cfid;
-    }
 }
 
 // ===== HANDLE STATS =====
@@ -85,13 +37,17 @@ async function handleStats(hit) {
         const column = columnMap[zone] || "torso";
 
         await pool.query(`
-            INSERT INTO player_stats (player, ${column}, total)
-            VALUES ($1, 1, 1)
+            INSERT INTO player_stats (player, name, ${column}, total)
+            VALUES ($1, $2, 1, 1)
             ON CONFLICT (player)
             DO UPDATE SET
+                name = EXCLUDED.name,
                 ${column} = player_stats.${column} + 1,
                 total = player_stats.total + 1
-        `, [killerId]);
+        `, [
+            killerId,
+            hit.killerName
+        ]);
 
     } catch (err) {
         console.error("Stats DB error:", err);
@@ -136,45 +92,28 @@ function buildChart(stats) {
             datasets: [{
                 data,
                 backgroundColor: colors,
-                borderColor: "#EAEAEA",
+                borderColor: "#1e1e1e",
                 borderWidth: 2
             }]
         },
         options: {
-            layout: {
-                padding: {
-                    top: 10,
-                    bottom: 10,
-                    left: 10,
-                    right: 10
-                }
-            },
             plugins: {
                 legend: {
                     position: "top",
                     labels: {
-                        color: "#F5F5F5",
-                        boxWidth: 28,
-                        boxHeight: 12,
+                        color: "#ffffff",
                         font: {
-                            size: 16,
+                            size: 18,
                             weight: "bold"
-                        }
+                        },
+                        padding: 20
                     }
-                },
-                datalabels: {
-                    color: "#111111",
-                    font: {
-                        size: 20,
-                        weight: "bold"
-                    },
-                    formatter: (value) => value > 0 ? value : ""
                 }
             }
         }
     };
 
-    return `https://quickchart.io/chart?width=700&height=520&backgroundColor=transparent&devicePixelRatio=2&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
+    return `https://quickchart.io/chart?width=800&height=600&backgroundColor=transparent&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
 }
 
 // ===== HANDLE /PROFILE =====
@@ -191,7 +130,6 @@ async function handleProfile(interaction) {
             });
         }
 
-        const playerName = await fetchPlayerName(cfid);
         const total = stats.total || 0;
 
         const brain = stats.brain || 0;
@@ -209,33 +147,31 @@ async function handleProfile(interaction) {
         const chartUrl = buildChart(stats);
 
         let distribution =
-            `🔵 **Brain:** ${brain} (${calc(brain)}%)\n` +
-            `🟣 **Head:** ${head} (${calc(head)}%)\n` +
-            `🔴 **Torso:** ${torso} (${calc(torso)}%)\n` +
-            `🟠 **Arms:** ${arms} (${calc(arms)}%)\n` +
-            `🟢 **Legs:** ${legs} (${calc(legs)}%)`;
+            `🔵 Brain: ${brain} (${calc(brain)}%)\n` +
+            `🟣 Head: ${head} (${calc(head)}%)\n` +
+            `🔴 Torso: ${torso} (${calc(torso)}%)\n` +
+            `🟠 Arms: ${arms} (${calc(arms)}%)\n` +
+            `🟢 Legs: ${legs} (${calc(legs)}%)`;
 
         if (other > 0) {
-            distribution += `\n⚪ **Other:** ${other} (${calc(other)}%)`;
+            distribution += `\n⚪ Other: ${other} (${calc(other)}%)`;
         }
 
         const embed = new EmbedBuilder()
             .setColor("#2b2d31")
             .setTitle("GrevBot Player Profile Analysis")
             .setDescription(
-                `👤 **[${playerName}](${profileUrl})**\n` +
+                `👤 **[${stats.name || cfid}](${profileUrl})**\n` +
                 `🆔 \`${cfid}\``
             )
             .addFields(
                 {
                     name: "📊 Total Shots Hit",
-                    value: `**${total}**`,
-                    inline: false
+                    value: `**${total}**`
                 },
                 {
                     name: "📈 Hit Distribution (Count / %)",
-                    value: distribution,
-                    inline: false
+                    value: distribution
                 }
             )
             .setImage(chartUrl)
