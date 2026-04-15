@@ -43,7 +43,10 @@ async function handleStats(hit) {
                 name = EXCLUDED.name,
                 ${column} = player_stats.${column} + 1,
                 total = player_stats.total + 1
-        `, [killerId, hit.killerName]);
+        `, [
+            killerId,
+            hit.killerName
+        ]);
 
     } catch (err) {
         console.error("Stats DB error:", err);
@@ -59,15 +62,19 @@ async function getStatsById(cfid) {
     return res.rows[0];
 }
 
-// ===== CHART (MATCHES YOUR FRIEND) =====
+// ===== CHART =====
 function buildChart(stats) {
-    const brain = stats.brain || 0;
-    const head = stats.head || 0;
-    const torso = stats.torso || 0;
-    const arms = (stats.left_arm || 0) + (stats.right_arm || 0);
-    const legs = (stats.left_leg || 0) + (stats.right_leg || 0);
+    const raw = [
+        { label: "Brain", value: stats.brain || 0, color: "#4FC3F7" },
+        { label: "Head", value: stats.head || 0, color: "#9575CD" },
+        { label: "Torso", value: stats.torso || 0, color: "#F06292" },
+        { label: "Arms", value: (stats.left_arm || 0) + (stats.right_arm || 0), color: "#FFB74D" },
+        { label: "Legs", value: (stats.left_leg || 0) + (stats.right_leg || 0), color: "#4DB6AC" }
+    ];
 
-    const total = brain + head + torso + arms + legs;
+    const total = raw.reduce((sum, e) => sum + e.value, 0);
+
+    const filtered = raw.filter(e => e.value > 0);
 
     const pct = (v) =>
         total > 0 ? parseFloat(((v / total) * 100).toFixed(1)) : 0;
@@ -75,49 +82,42 @@ function buildChart(stats) {
     const chartConfig = {
         type: "pie",
         data: {
-            labels: ["Brain", "Head", "Torso", "Arms", "Legs"],
+            labels: filtered.map(e => e.label),
             datasets: [{
-                data: [
-                    pct(brain),
-                    pct(head),
-                    pct(torso),
-                    pct(arms),
-                    pct(legs)
-                ],
-                backgroundColor: [
-                    "#4FC3F7",
-                    "#9575CD",
-                    "#F06292",
-                    "#FFB74D",
-                    "#4DB6AC"
-                ],
-                borderColor: "white",
+                data: filtered.map(e => pct(e.value)),
+                backgroundColor: filtered.map(e => e.color),
+                borderColor: "#ffffff",
                 borderWidth: 2
             }]
         },
         options: {
-            legend: { // 🔥 v2 syntax
+            legend: {
                 labels: {
-                    fontColor: "white",
-                    fontSize: 14
+                    fontColor: "#ffffff",
+                    fontSize: 16,
+                    fontStyle: "bold",
+                    fontFamily: "Arial"
                 }
             },
             plugins: {
                 datalabels: {
-                    color: "black",
+                    color: "#000000",
+                    backgroundColor: "#ffffff",
+                    borderRadius: 4,
+                    padding: 6,
                     font: {
-                        size: 24,
+                        size: 26,
                         weight: "bold"
                     },
                     formatter: function(value) {
-                        return value > 0 ? value + "%" : "";
+                        return value + "%";
                     }
                 }
             }
         }
     };
 
-    return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
+    return `https://quickchart.io/chart?devicePixelRatio=3&width=800&height=600&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
 }
 
 // ===== HANDLE PROFILE =====
@@ -126,6 +126,7 @@ async function handleProfile(interaction) {
 
     try {
         const stats = await getStatsById(cfid);
+
         if (!stats) {
             return interaction.reply({
                 content: "Ingen data funnet.",
@@ -167,7 +168,9 @@ async function handleProfile(interaction) {
                 }
             )
             .setImage(buildChart(stats))
-            .setFooter({ text: "Grevbot Player-analysis- 2026" });
+            .setFooter({
+                text: "Grevbot Player-analysis- 2026"
+            });
 
         await interaction.reply({ embeds: [embed] });
 
