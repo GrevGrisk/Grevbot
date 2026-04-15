@@ -16,7 +16,6 @@ function buildProfileLink(cfid) {
     return `https://app.cftools.cloud/profile/${cfid}`;
 }
 
-// ===== HANDLE STATS =====
 async function handleStats(hit) {
     try {
         const killerId = extractCFID(hit.killerLink);
@@ -43,16 +42,13 @@ async function handleStats(hit) {
             DO UPDATE SET
                 ${column} = player_stats.${column} + 1,
                 total = player_stats.total + 1
-        `, [
-            killerId
-        ]);
+        `, [killerId]);
 
     } catch (err) {
         console.error("Stats DB error:", err);
     }
 }
 
-// ===== GET PROFILE =====
 async function getStatsById(cfid) {
     const res = await pool.query(
         "SELECT * FROM player_stats WHERE player = $1",
@@ -61,7 +57,6 @@ async function getStatsById(cfid) {
     return res.rows[0];
 }
 
-// ===== CHART =====
 function buildChart(stats) {
     const data = [
         stats.brain || 0,
@@ -91,7 +86,6 @@ function buildChart(stats) {
     return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
 }
 
-// ===== HANDLE /PROFILE =====
 async function handleProfile(interaction) {
     const cfid = interaction.options.getString("cfid");
 
@@ -118,28 +112,32 @@ async function handleProfile(interaction) {
         const profileUrl = buildProfileLink(cfid);
         const chartUrl = buildChart(stats);
 
-        const distribution =
-`🔵 Brain  : ${brain} (${calc(brain)}%)
-🟣 Head   : ${head} (${calc(head)}%)
-🔴 Torso  : ${torso} (${calc(torso)}%)
-🟠 Arms   : ${arms} (${calc(arms)}%)
-🟢 Legs   : ${legs} (${calc(legs)}%)`;
+        const table =
+`\`\`\`
+Brain : ${brain} (${calc(brain)}%)
+Head  : ${head} (${calc(head)}%)
+Torso : ${torso} (${calc(torso)}%)
+Arms  : ${arms} (${calc(arms)}%)
+Legs  : ${legs} (${calc(legs)}%)
+\`\`\``;
 
         const embed = new EmbedBuilder()
             .setColor("#2b2d31")
-            .setTitle("📊 PLAYER PROFILE")
+            .setTitle("📊 Player Profile")
             .setDescription(
                 `👤 **[${cfid}](${profileUrl})**\n` +
-                `🆔 \`${cfid}\``
+                `🆔 \`${cfid}\`\n`
             )
             .addFields(
                 {
                     name: "📊 Total Shots Hit",
-                    value: `**${total}**`
+                    value: `\n**${total}**\n`,
+                    inline: false
                 },
                 {
                     name: "📈 Hit Distribution (Count / %)",
-                    value: distribution
+                    value: table,
+                    inline: false
                 }
             )
             .setImage(chartUrl);
