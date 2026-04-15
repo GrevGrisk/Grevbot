@@ -205,7 +205,7 @@ client.on("messageCreate", async (msg) => {
                 }
 
                 try {
-                    await statsModule.handleStats(hit);
+                    await statsModule.handleStats(client, hit);
                 } catch (err) {
                     console.error("Stats error:", err);
                 }
