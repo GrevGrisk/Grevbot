@@ -13,7 +13,9 @@ const { REST } = require("@discordjs/rest");
 const killfeedModule = require("./killfeedModule");
 const alertsModule = require("./alertsModule");
 const statsModule = require("./statsModule");
-const testAlertCommand = require("./testalert"); // 🔥 lagt til
+const testAlertCommand = require("./testalert");
+
+const pool = require("./db"); // 🔥 NY
 
 const client = new Client({
     intents: [
@@ -45,7 +47,6 @@ const commands = [
                 .setRequired(true)
         ),
 
-    // 🔥 lagt til testalert
     new SlashCommandBuilder()
         .setName("testalert")
         .setDescription("Trigger a test GrevBot alert")
@@ -134,7 +135,6 @@ client.on("interactionCreate", async interaction => {
         await statsModule.handleProfile(interaction);
     }
 
-    // 🔥 lagt til
     if (interaction.commandName === "testalert") {
         await testAlertCommand.execute(interaction);
     }
@@ -246,6 +246,27 @@ client.on("messageCreate", async (msg) => {
                         last = before[0];
                     }
                 }
+            }
+
+            // 🔥 NY: LAGRE DEATH
+            const victimCFID = kill.victimLink?.split("/").pop();
+            const killerCFID = kill.killerLink?.split("/").pop();
+
+            try {
+                await pool.query(`
+                    INSERT INTO player_deaths
+                    (victim, victim_name, killer, killer_name, weapon, distance)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                `, [
+                    victimCFID,
+                    kill.victimName,
+                    killerCFID,
+                    kill.killerName,
+                    kill.weapon,
+                    kill.distance
+                ]);
+            } catch (err) {
+                console.error("Death insert error:", err);
             }
 
             await killfeedModule.sendKillEmbed({
