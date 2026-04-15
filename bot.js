@@ -32,7 +32,7 @@ const ALERT_CHANNEL_ID = "1478757145288900679";
 const EXCLUDED_WEAPONS = ["TriDagger"];
 const lastHit = new Map();
 
-// ===== SLASH COMMAND REGISTER =====
+// ===== COMMANDS =====
 const commands = [
     new SlashCommandBuilder()
         .setName("profile")
@@ -46,20 +46,22 @@ const commands = [
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
-(async () => {
-    try {
-        await rest.put(
-            Routes.applicationCommands(CLIENT_ID),
-            { body: commands }
-        );
-        console.log("Slash command registered");
-    } catch (error) {
-        console.error(error);
-    }
-})();
-
-client.on("clientReady", () => {
+// ===== READY =====
+client.on("clientReady", async () => {
     console.log(`Logged in as ${client.user.tag}`);
+
+    // Register commands in ALL guilds (instant)
+    for (const [id, guild] of client.guilds.cache) {
+        try {
+            await rest.put(
+                Routes.applicationGuildCommands(CLIENT_ID, id),
+                { body: commands }
+            );
+            console.log(`Commands registered in ${guild.name}`);
+        } catch (err) {
+            console.error(`Failed registering in ${id}`, err);
+        }
+    }
 });
 
 // ===== SLASH HANDLER =====
