@@ -34,7 +34,6 @@ function buildMapLink(death) {
     const weapon = death.weapon || "-";
     const distance = death.distance || "-";
 
-    // 🔥 FIX: alltid fallback til "-"
     const damage = death.damage ?? "-";
     const hitzone = death.hitzone ?? death.zone ?? "-";
 
@@ -203,48 +202,34 @@ async function handleProfile(interaction) {
 
         const deaths = await getLastDeaths(cfid);
 
-       let deathsText = "-";
+        let deathsText = "-";
 
-if (Array.isArray(deaths) && deaths.length > 0) {
-    const mapped = deaths.map(d => {
-        try {
-            const killerText = d.killer
-                ? `[${d.killer_name || "Unknown"}](${buildProfileLink(d.killer)})`
-                : `${d.killer_name || "Unknown"}`;
-
-            const weapon = d.weapon || "-";
-            const distance = d.distance ? `${d.distance}m` : "-";
-
-            const mapLink = (d.x && d.y)
-                ? `https://dayz.ginfo.gg/#location=${d.x};${d.y}`
-                : null;
-
-            const mapText = mapLink ? ` | [Map](${mapLink})` : "";
-
-            return `💀 ${killerText} | ${weapon} | ${distance}${mapText}`;
-        } catch (e) {
-            return "💀 -";
-        }
-    });
-
-    deathsText = mapped.length > 0
-        ? mapped.join("\n")
-        : "-";
-}
-
-        if (deaths.length > 0) {
-            deathsText = deaths.map(d => {
+        if (Array.isArray(deaths) && deaths.length > 0) {
+            const lines = deaths.map(d => {
                 const killerText = d.killer
                     ? `[${d.killer_name || "Unknown"}](${buildProfileLink(d.killer)})`
                     : `${d.killer_name || "Unknown"}`;
 
                 const weapon = d.weapon || "-";
                 const distance = d.distance ? `${d.distance}m` : "-";
-                const mapLink = buildMapLink(d);
+
+                const mapLink = (d.x && d.y)
+                    ? `https://dayz.ginfo.gg/#location=${d.x};${d.y}`
+                    : null;
+
                 const mapText = mapLink ? ` | [Map](${mapLink})` : "";
 
                 return `💀 ${killerText} | ${weapon} | ${distance}${mapText}`;
-            }).join("\n");
+            });
+
+            // 🔥 1024-safe
+            let buffer = "";
+            for (const line of lines) {
+                if ((buffer + line + "\n").length > 1024) break;
+                buffer += line + "\n";
+            }
+
+            deathsText = buffer.trim() || "-";
         }
 
         const embed = new EmbedBuilder()
