@@ -1,4 +1,9 @@
-const { EmbedBuilder } = require("discord.js");
+const {
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle
+} = require("discord.js");
 
 /*
 ========================================
@@ -20,10 +25,34 @@ const SHOTGUNS = [
 ];
 
 const playerAlerts = new Map();
+const acknowledgedPlayers = new Map();
+const alertSnapshots = new Map();
+
 const ALERT_WINDOW = 60 * 60 * 1000;
+const ACK_DURATION = 7 * 24 * 60 * 60 * 1000;
+
+const FORCE_ALERT_INCREASE = {
+    brain: 2,
+    head: 5,
+    torso: 8,
+    total: 100
+};
 
 function buildProfileLink(cfid) {
     return `https://app.cftools.cloud/profile/${cfid}`;
+}
+
+function acknowledgePlayer(cfid, checkedBy = "Unknown") {
+    const snapshot = alertSnapshots.get(cfid);
+
+    acknowledgedPlayers.set(cfid, {
+        time: Date.now(),
+        checkedBy,
+        brain: snapshot?.brain || 0,
+        head: snapshot?.head || 0,
+        torso: snapshot?.torso || 0,
+        total: snapshot?.total || 0
+    });
 }
 
 function buildChart(stats) {
@@ -81,6 +110,25 @@ function buildChart(stats) {
     return `https://quickchart.io/chart?devicePixelRatio=3&width=800&height=600&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
 }
 
+async function handleAlertInteraction(interaction) {
+    if (!interaction.isButton()) return;
+
+    if (!interaction.customId.startsWith("ack_player:")) return;
+
+    const cfid = interaction.customId.split(":")[1];
+
+    acknowledgePlayer(cfid, interaction.user.tag);
+
+    await interaction.reply({
+        content: `✅ Spilleren er kvittert ut og muted i 7 dager.\nCFID: \`${cfid}\``,
+        ephemeral: true
+    });
+
+    await interaction.message.edit({
+        components: []
+    });
+}
+
 // ===== MAIN =====
 async function checkPlayer(client, hit, stats) {
     try {
@@ -111,6 +159,31 @@ async function checkPlayer(client, hit, stats) {
         const brainPct = pct(brain);
         const headPct = pct(head);
         const torsoPct = pct(torso);
+
+        const ack = acknowledgedPlayers.get(stats.player);
+
+        if (!isTest && ack) {
+            const expired = (Date.now() - ack.time) > ACK_DURATION;
+
+            if (expired) {
+                acknowledgedPlayers.delete(stats.player);
+            } else {
+                const brainIncrease = brainPct - ack.brain;
+                const headIncrease = headPct - ack.head;
+                const torsoIncrease = torsoPct - ack.torso;
+                const totalIncrease = total - ack.total;
+
+                const drasticChange =
+                    brainIncrease >= FORCE_ALERT_INCREASE.brain ||
+                    headIncrease >= FORCE_ALERT_INCREASE.head ||
+                    torsoIncrease >= FORCE_ALERT_INCREASE.torso ||
+                    totalIncrease >= FORCE_ALERT_INCREASE.total;
+
+                if (!drasticChange) {
+                    return;
+                }
+            }
+        }
 
         let reason = null;
 
@@ -179,11 +252,22 @@ async function checkPlayer(client, hit, stats) {
                 text: "GrevBot statsalert 2026"
             });
 
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`ack_player:${stats.player}`)
+                .setLabel("PC-Checked / mute 7 days")
+                .setStyle(ButtonStyle.Success)
+                .setEmoji("✅")
+        );
+
         for (const id of ALERT_CHANNEL_IDS) {
             try {
                 const channel = await client.channels.fetch(id);
                 if (channel) {
-                    await channel.send({ embeds: [embed] });
+                    await channel.send({
+                        embeds: [embed],
+                        components: [row]
+                    });
                 }
             } catch (err) {
                 console.error(err);
@@ -197,11 +281,20 @@ async function checkPlayer(client, hit, stats) {
             torso: torsoPct
         });
 
+        alertSnapshots.set(stats.player, {
+            brain: brainPct,
+            head: headPct,
+            torso: torsoPct,
+            total: total
+        });
+
     } catch (err) {
         console.error("Alert error:", err);
     }
 }
 
 module.exports = {
-    checkPlayer
+    checkPlayer,
+    handleAlertInteraction,
+    acknowledgePlayer
 };
