@@ -119,9 +119,10 @@ async function handleAlertInteraction(interaction) {
 
     acknowledgePlayer(cfid, interaction.user.tag);
 
-    await interaction.reply({
-        content: `✅ Spilleren er kvittert ut og muted i 7 dager.\nCFID: \`${cfid}\``,
-        ephemeral: true
+    await interaction.deferReply({ ephemeral: true });
+
+    await interaction.editReply({
+        content: `✅ Player muted for 7 days.\nCFID: \`${cfid}\``
     });
 
     await interaction.message.edit({
@@ -255,7 +256,7 @@ async function checkPlayer(client, hit, stats) {
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId(`ack_player:${stats.player}`)
-                .setLabel("PC-Checked / mute 7 days")
+                .setLabel("PC Checked / Mute 7 Days")
                 .setStyle(ButtonStyle.Success)
                 .setEmoji("✅")
         );
