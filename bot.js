@@ -15,6 +15,7 @@ const pool = require("./db");
 const killfeedModule = require("./killfeedModule");
 const alertsModule = require("./alertsModule");
 const statsModule = require("./statsModule");
+const statsAlert = require("./statsAlertModule");
 const testAlertCommand = require("./testalert");
 
 const client = new Client({
@@ -131,7 +132,7 @@ function parseKill(text) {
 // ===== SLASH HANDLER =====
 client.on("interactionCreate", async interaction => {
     if (interaction.isButton()) {
-        await alertsModule.handleAlertInteraction(interaction);
+        await statsAlert.handleAlertInteraction(interaction);
         return;
     }
 
