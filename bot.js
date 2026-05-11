@@ -130,6 +130,11 @@ function parseKill(text) {
 
 // ===== SLASH HANDLER =====
 client.on("interactionCreate", async interaction => {
+    if (interaction.isButton()) {
+        await alertsModule.handleAlertInteraction(interaction);
+        return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     if (interaction.commandName === "profile") {
