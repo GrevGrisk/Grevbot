@@ -75,13 +75,13 @@ client.on("clientReady", async () => {
 
 // ===== coords =====
 function getCoords(text, type) {
-    const match = text.match(new RegExp(`${type}:\\s*<X:\\s*([\\d.]+),\\s*Y:\\s*([\\d.]+)`));
+    const match = text.match(new RegExp(`${type}:\\s*<X:\\s*([\\d.]+),\\s*Y:\\s*([\\d.]+),\\s*Z:\\s*([\\d.]+)>`));
     if (!match) return null;
     return { x: match[1], y: match[2] };
 }
 
 function getZ(text, type) {
-    const match = text.match(new RegExp(`${type}:.*Z:\\s*([\\d.]+)`));
+    const match = text.match(new RegExp(`${type}:\\s*<X:\\s*[\\d.]+,\\s*Y:\\s*[\\d.]+,\\s*Z:\\s*([\\d.]+)>`));
     return match ? match[1] : "0";
 }
 
