@@ -36,10 +36,9 @@ const OUTPUT_CHANNEL_ID = "1492666634190454864";
 const ALERT_CHANNEL_ID = "1478757145288900679";
 
 const EXCLUDED_WEAPONS = ["TriDagger"];
-
 const lastHit = new Map();
 
-// ===== ALT DETECTOR DATABASE HELPERS =====
+// ===== ALT DETECTOR HELPERS =====
 function hashIP(ip) {
     if (!process.env.IP_HASH_SECRET) {
         console.error("Missing IP_HASH_SECRET environment variable");
@@ -60,10 +59,10 @@ async function storeAltPlayerIP({
     ip,
     server_id
 }) {
-    if (!steam64 || !ip) return;
+    if (!steam64 || !ip) return false;
 
     const ipHash = hashIP(ip);
-    if (!ipHash) return;
+    if (!ipHash) return false;
 
     let playerId = null;
 
@@ -106,12 +105,12 @@ async function storeAltPlayerIP({
         }
     } catch (err) {
         console.error("Alt player insert/update error:", err);
-        return;
+        return false;
     }
 
     try {
         const existingLink = await pool.query(`
-            SELECT id, seen_count FROM alt_ip_links
+            SELECT id FROM alt_ip_links
             WHERE player_id = $1
               AND ip_hash = $2
               AND server_id = $3
@@ -140,63 +139,48 @@ async function storeAltPlayerIP({
                 server_id || null
             ]);
         }
+
+        return true;
     } catch (err) {
         console.error("Alt IP link insert/update error:", err);
+        return false;
     }
 }
 
-async function findAltMatchesByIP(ip) {
-    const ipHash = hashIP(ip);
-    if (!ipHash) return [];
+async function getCFToolsToken() {
+    const response = await axios.post(
+        "https://data.cftools.cloud/v1/auth/register",
+        {
+            application_id: process.env.CFTOOLS_APP_ID,
+            secret: process.env.CFTOOLS_APP_SECRET
+        },
+        {
+            headers: {
+                "User-Agent": process.env.CFTOOLS_APP_ID
+            }
+        }
+    );
 
-    try {
-        const result = await pool.query(`
-            SELECT 
-                ap.id,
-                ap.steam64,
-                ap.cftools_id,
-                ap.beguid,
-                ap.last_name,
-                ail.server_id,
-                ail.first_seen,
-                ail.last_seen,
-                ail.seen_count
-            FROM alt_ip_links ail
-            JOIN alt_players ap ON ap.id = ail.player_id
-            WHERE ail.ip_hash = $1
-            ORDER BY ail.last_seen DESC
-        `, [ipHash]);
-
-        return result.rows;
-    } catch (err) {
-        console.error("Alt IP match lookup error:", err);
-        return [];
-    }
+    return response.data.token;
 }
 
-async function createAltCase({
-    player_id,
-    matched_player_id,
-    score,
-    reason
-}) {
-    try {
-        await pool.query(`
-            INSERT INTO alt_cases
-            (player_id, matched_player_id, score, reason, created_at)
-            VALUES ($1, $2, $3, $4, CURRENT_DATE)
-        `, [
-            player_id,
-            matched_player_id,
-            score,
-            reason
-        ]);
-    } catch (err) {
-        console.error("Alt case insert error:", err);
-    }
+async function getCFToolsGSMList() {
+    const token = await getCFToolsToken();
+
+    const response = await axios.get(
+        `https://data.cftools.cloud/v1/server/${process.env.CFTOOLS_SERVER_API_ID}/GSM/list`,
+        {
+            headers: {
+                "User-Agent": process.env.CFTOOLS_APP_ID,
+                "Authorization": `Bearer ${token}`
+            }
+        }
+    );
+
+    return response.data;
 }
 
-// 🔥 prosesser meldinger i streng rekkefølge
+// ===== QUEUE =====
 let processingQueue = Promise.resolve();
 
 // ===== COMMANDS =====
@@ -220,8 +204,20 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName("cflist")
-        .setDescription("Test CF Tools GSM player list")
+        .setDescription("Test CF Tools GSM player list"),
 
+    new SlashCommandBuilder()
+        .setName("cfsync")
+        .setDescription("Sync active CF Tools players to alt detector database"),
+
+    new SlashCommandBuilder()
+        .setName("cfplayer")
+        .setDescription("Test CF Tools player endpoint")
+        .addStringOption(option =>
+            option.setName("cftools_id")
+                .setDescription("CFTools ID")
+                .setRequired(true)
+        )
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -300,7 +296,6 @@ function parseKill(text) {
 
 // ===== SLASH HANDLER =====
 client.on("interactionCreate", async interaction => {
-
     if (interaction.isButton()) {
         await statsAlert.handleAlertInteraction(interaction);
         return;
@@ -316,87 +311,124 @@ client.on("interactionCreate", async interaction => {
         await testAlertCommand.execute(interaction);
     }
 
-    // ===== CF TEST =====
     if (interaction.commandName === "cftest") {
-
         await interaction.deferReply({ ephemeral: true });
 
         try {
+            const token = await getCFToolsToken();
 
-            const response = await axios.post(
-                "https://data.cftools.cloud/v1/auth/register",
-                {
-                    application_id: process.env.CFTOOLS_APP_ID,
-                    secret: process.env.CFTOOLS_APP_SECRET
-                },
-                {
-                    headers: {
-                        "User-Agent": process.env.CFTOOLS_APP_ID
-                    }
-                }
-            );
-
-            console.log("CF Tools API test response:", response.data);
+            console.log("CF Tools token received:", token ? "YES" : "NO");
 
             await interaction.editReply("CF Tools API connected successfully.");
-
         } catch (err) {
-
             console.error("CF Tools API test failed:", err.response?.data || err.message || err);
-
             await interaction.editReply("CF Tools API failed. Check Railway logs.");
         }
     }
 
-    // ===== CF LIST =====
     if (interaction.commandName === "cflist") {
-
         await interaction.deferReply({ ephemeral: true });
 
         try {
+            const list = await getCFToolsGSMList();
+            const players = Array.isArray(list) ? list : (list.sessions || list.players || list.data || []);
 
-            const authResponse = await axios.post(
-                "https://data.cftools.cloud/v1/auth/register",
-                {
-                    application_id: process.env.CFTOOLS_APP_ID,
-                    secret: process.env.CFTOOLS_APP_SECRET
-                },
-                {
-                    headers: {
-                        "User-Agent": process.env.CFTOOLS_APP_ID
-                    }
+            console.log("===== CF TOOLS GSM LIST SUMMARY =====");
+            console.log("CF Tools GSM list count:", players.length);
+
+            if (players.length > 0) {
+                console.log("Sample player fields:", Object.keys(players[0]));
+                console.log("Sample gamedata:", players[0].gamedata);
+                console.log("Sample connection fields:", Object.keys(players[0].connection || {}));
+            }
+
+            await interaction.editReply(`CF Tools GSM list fetched. Players found: ${players.length}. Check Railway logs.`);
+        } catch (err) {
+            console.error("CF Tools GSM list failed:", err.response?.data || err.message || err);
+            await interaction.editReply("CF Tools GSM list failed. Check Railway logs.");
+        }
+    }
+
+    if (interaction.commandName === "cfsync") {
+        await interaction.deferReply({ ephemeral: true });
+
+        try {
+            const list = await getCFToolsGSMList();
+
+            const players = Array.isArray(list) ? list : (list.sessions || list.players || list.data || []);
+
+            let found = 0;
+            let saved = 0;
+            let skipped = 0;
+
+            for (const player of players) {
+                const steam64 = player?.gamedata?.steam64;
+                const playerName = player?.gamedata?.player_name || player?.persona?.profile?.name || null;
+                const cftoolsId = player?.cftools_id || null;
+                const beguid = player?.gamedata?.beguid || player?.gamedata?.be_guid || null;
+                const ip = player?.connection?.ipv4;
+
+                if (!steam64 || !ip) {
+                    skipped++;
+                    continue;
                 }
+
+                found++;
+
+                const ok = await storeAltPlayerIP({
+                    steam64,
+                    cftools_id: cftoolsId,
+                    beguid,
+                    player_name: playerName,
+                    ip,
+                    server_id: process.env.CFTOOLS_SERVER_API_ID
+                });
+
+                if (ok) saved++;
+            }
+
+            await interaction.editReply(
+                `CF sync complete.\nFound: ${found}\nSaved: ${saved}\nSkipped: ${skipped}`
             );
+        } catch (err) {
+            console.error("CF sync failed:", err.response?.data || err.message || err);
+            await interaction.editReply("CF sync failed. Check Railway logs.");
+        }
+    }
 
-            const token = authResponse.data.token;
+    if (interaction.commandName === "cfplayer") {
+        await interaction.deferReply({ ephemeral: true });
 
-            const listResponse = await axios.get(
-                `https://data.cftools.cloud/v1/server/${process.env.CFTOOLS_SERVER_API_ID}/GSM/list`,
+        try {
+            const cftoolsId = interaction.options.getString("cftools_id");
+            const token = await getCFToolsToken();
+
+            const response = await axios.get(
+                `https://data.cftools.cloud/v2/server/${process.env.CFTOOLS_SERVER_API_ID}/player`,
                 {
                     headers: {
                         "User-Agent": process.env.CFTOOLS_APP_ID,
                         "Authorization": `Bearer ${token}`
+                    },
+                    params: {
+                        cftools_id: cftoolsId
                     }
                 }
             );
 
-            console.log("===== CF TOOLS GSM LIST =====");
-            console.log(JSON.stringify(listResponse.data, null, 2));
+            console.log("===== CF TOOLS PLAYER RESPONSE =====");
+            console.log(JSON.stringify(response.data, null, 2));
 
-            await interaction.editReply("CF Tools GSM list fetched. Check Railway logs.");
-
+            await interaction.editReply("CF Tools player data fetched. Check Railway logs.");
         } catch (err) {
-
-            console.error("CF Tools GSM list failed:", err.response?.data || err.message || err);
-
-            await interaction.editReply("CF Tools GSM list failed. Check Railway logs.");
+            console.error("CF Tools player lookup failed:", err.response?.data || err.message || err);
+            await interaction.editReply("CF Tools player lookup failed. Check Railway logs.");
         }
     }
 });
 
 // ===== MESSAGE PROCESSOR =====
 async function processInputMessage(msg) {
-
     if (msg.author.id === client.user.id) return;
     if (msg.channel.id !== INPUT_CHANNEL_ID) return;
 
@@ -421,7 +453,6 @@ async function processInputMessage(msg) {
 
     // ===== HIT =====
     if (isHit) {
-
         const hit = parseHit(content);
         if (!hit) return;
 
@@ -451,7 +482,6 @@ async function processInputMessage(msg) {
         }
 
         if (alertChannel) {
-
             try {
                 await alertsModule.handleAlerts(
                     hit,
@@ -477,7 +507,6 @@ async function processInputMessage(msg) {
 
     // ===== KILL =====
     if (isKill) {
-
         const kill = parseKill(content);
         if (!kill) return;
 
@@ -485,7 +514,6 @@ async function processInputMessage(msg) {
         const killerCFID = kill.killerLink?.split("/").pop();
 
         try {
-
             await pool.query(`
                 INSERT INTO player_deaths
                 (victim, victim_name, killer, killer_name, weapon, distance, x, y, killer_x, killer_y)
@@ -502,7 +530,6 @@ async function processInputMessage(msg) {
                 coordsKiller?.x || null,
                 coordsKiller?.y || null
             ]);
-
         } catch (err) {
             console.error("Death insert error:", err);
         }
@@ -513,13 +540,11 @@ async function processInputMessage(msg) {
         let last = { damage: "-", zone: "-" };
 
         if (lastHit.has(key)) {
-
             const hits = lastHit.get(key);
 
             const exact = hits.filter(h => h.distance === kill.distance);
 
             if (exact.length > 0) {
-
                 const before = exact
                     .filter(h => h.time <= killTime)
                     .sort((a, b) => b.time - a.time);
@@ -531,7 +556,6 @@ async function processInputMessage(msg) {
         }
 
         if (outputChannel) {
-
             await killfeedModule.sendKillEmbed({
                 outputChannel,
                 kill,
@@ -550,7 +574,6 @@ async function processInputMessage(msg) {
 
 // ===== MESSAGE HANDLER =====
 client.on("messageCreate", (msg) => {
-
     processingQueue = processingQueue
         .then(() => processInputMessage(msg))
         .catch((err) => {
