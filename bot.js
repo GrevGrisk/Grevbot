@@ -18,6 +18,7 @@ const statsModule = require("./statsModule");
 const statsAlert = require("./statsAlertModule");
 const testAlertCommand = require("./testalert");
 const altAccountModule = require("./altAccountModule");
+const playerIntelModule = require("./playerIntelModule");
 
 const client = new Client({
     intents: [
@@ -40,6 +41,7 @@ const lastHit = new Map();
 
 let processingQueue = Promise.resolve();
 let altSyncRunning = false;
+let playerIntelRunning = false;
 
 // ===== COMMANDS =====
 const commands = [
@@ -63,6 +65,10 @@ const commands = [
     new SlashCommandBuilder()
         .setName("testalt")
         .setDescription("Send test alt account alert embed"),
+
+    new SlashCommandBuilder()
+        .setName("testintel")
+        .setDescription("Send test player intel alert embeds"),
 
     new SlashCommandBuilder()
         .setName("altcheck")
@@ -103,6 +109,21 @@ client.on("clientReady", async () => {
             console.error("Alt sync error:", err.response?.data || err.message || err);
         } finally {
             altSyncRunning = false;
+        }
+    }, 5 * 60 * 1000);
+
+    setInterval(async () => {
+        if (playerIntelRunning) return;
+
+        playerIntelRunning = true;
+
+        try {
+            const result = await playerIntelModule.scanAndAlert(client);
+            console.log("Player intel scan complete:", result);
+        } catch (err) {
+            console.error("Player intel scan error:", err.response?.data || err.message || err);
+        } finally {
+            playerIntelRunning = false;
         }
     }, 5 * 60 * 1000);
 });
@@ -195,6 +216,21 @@ client.on("interactionCreate", async interaction => {
         }
     }
 
+    if (interaction.commandName === "testintel") {
+        try {
+            if (!interaction.deferred && !interaction.replied) {
+                await interaction.deferReply({ ephemeral: true });
+            }
+
+            await playerIntelModule.sendTestIntelAlerts(client);
+
+            await interaction.editReply("Test player intel alerts sent.");
+        } catch (err) {
+            console.error("Test player intel error:", err);
+            await interaction.editReply("Failed to send test player intel alerts.");
+        }
+    }
+
     if (interaction.commandName === "altcheck") {
         try {
             if (!interaction.deferred && !interaction.replied) {
@@ -219,39 +255,20 @@ client.on("interactionCreate", async interaction => {
                 await interaction.deferReply();
             }
 
-            console.log("===== ALT SYNC DEBUG START =====");
-            console.log("CFTOOLS_APP_ID exists:", !!process.env.CFTOOLS_APP_ID);
-            console.log("CFTOOLS_APP_SECRET exists:", !!process.env.CFTOOLS_APP_SECRET);
-            console.log("CFTOOLS_SERVER_API_ID:", process.env.CFTOOLS_SERVER_API_ID);
-            console.log("ALT_ALERT_CHANNEL_ID:", process.env.ALT_ALERT_CHANNEL_ID);
-            console.log("IP_HASH_SECRET exists:", !!process.env.IP_HASH_SECRET);
+            const altResult = await altAccountModule.syncAndDetect(client);
+            const intelResult = await playerIntelModule.scanAndAlert(client);
 
-            const result = await altAccountModule.syncAndDetect(client);
-
-            console.log("===== ALT SYNC SUCCESS =====");
-            console.log(result);
-
-            if (interaction.deferred || interaction.replied) {
-                await interaction.editReply(
-                    `CF alt sync complete.\nFound: ${result.found}\nSaved: ${result.saved}\nAlerts: ${result.alerts}\nSkipped: ${result.skipped}`
-                );
-            }
+            await interaction.editReply(
+                `CF sync complete.\n` +
+                `Alt check: Found ${altResult.found}, Saved ${altResult.saved}, Alerts ${altResult.alerts}, Skipped ${altResult.skipped}\n` +
+                `Player intel: Checked ${intelResult.checked}, Alerts ${intelResult.alerts}`
+            );
         } catch (err) {
-            console.log("===== ALT SYNC FULL ERROR =====");
-            console.error("MESSAGE:", err.message);
-            console.error("STACK:", err.stack);
-
-            if (err.response) {
-                console.error("STATUS:", err.response.status);
-                console.error("DATA:", JSON.stringify(err.response.data, null, 2));
-                console.error("HEADERS:", JSON.stringify(err.response.headers, null, 2));
-            }
-
-            console.error("RAW ERROR:", err);
+            console.error("Manual sync error:", err.response?.data || err.message || err);
 
             try {
                 if (interaction.deferred || interaction.replied) {
-                    await interaction.editReply("CF alt sync failed. Check Railway logs.");
+                    await interaction.editReply("CF sync failed. Check Railway logs.");
                 }
             } catch (replyErr) {
                 console.error("Failed to send cfsync error reply:", replyErr);
