@@ -196,7 +196,7 @@ async function createAltCase({
     }
 }
 
-// 🔥 NY: prosesser meldinger i streng rekkefølge 1:1
+// 🔥 prosesser meldinger i streng rekkefølge
 let processingQueue = Promise.resolve();
 
 // ===== COMMANDS =====
@@ -209,12 +209,19 @@ const commands = [
                 .setDescription("CF ID")
                 .setRequired(true)
         ),
+
     new SlashCommandBuilder()
         .setName("testalert")
         .setDescription("Trigger a test GrevBot alert"),
+
     new SlashCommandBuilder()
         .setName("cftest")
-        .setDescription("Test CF Tools API")
+        .setDescription("Test CF Tools API"),
+
+    new SlashCommandBuilder()
+        .setName("cflist")
+        .setDescription("Test CF Tools GSM player list")
+
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -293,6 +300,7 @@ function parseKill(text) {
 
 // ===== SLASH HANDLER =====
 client.on("interactionCreate", async interaction => {
+
     if (interaction.isButton()) {
         await statsAlert.handleAlertInteraction(interaction);
         return;
@@ -308,31 +316,87 @@ client.on("interactionCreate", async interaction => {
         await testAlertCommand.execute(interaction);
     }
 
+    // ===== CF TEST =====
     if (interaction.commandName === "cftest") {
+
         await interaction.deferReply({ ephemeral: true });
 
         try {
+
             const response = await axios.post(
                 "https://data.cftools.cloud/v1/auth/register",
                 {
                     application_id: process.env.CFTOOLS_APP_ID,
                     secret: process.env.CFTOOLS_APP_SECRET
+                },
+                {
+                    headers: {
+                        "User-Agent": process.env.CFTOOLS_APP_ID
+                    }
                 }
             );
 
             console.log("CF Tools API test response:", response.data);
 
             await interaction.editReply("CF Tools API connected successfully.");
+
         } catch (err) {
+
             console.error("CF Tools API test failed:", err.response?.data || err.message || err);
 
             await interaction.editReply("CF Tools API failed. Check Railway logs.");
+        }
+    }
+
+    // ===== CF LIST =====
+    if (interaction.commandName === "cflist") {
+
+        await interaction.deferReply({ ephemeral: true });
+
+        try {
+
+            const authResponse = await axios.post(
+                "https://data.cftools.cloud/v1/auth/register",
+                {
+                    application_id: process.env.CFTOOLS_APP_ID,
+                    secret: process.env.CFTOOLS_APP_SECRET
+                },
+                {
+                    headers: {
+                        "User-Agent": process.env.CFTOOLS_APP_ID
+                    }
+                }
+            );
+
+            const token = authResponse.data.token;
+
+            const listResponse = await axios.get(
+                `https://data.cftools.cloud/v1/server/${process.env.CFTOOLS_SERVER_API_ID}/GSM/list`,
+                {
+                    headers: {
+                        "User-Agent": process.env.CFTOOLS_APP_ID,
+                        "Authorization": `Bearer ${token}`
+                    }
+                }
+            );
+
+            console.log("===== CF TOOLS GSM LIST =====");
+            console.log(JSON.stringify(listResponse.data, null, 2));
+
+            await interaction.editReply("CF Tools GSM list fetched. Check Railway logs.");
+
+        } catch (err) {
+
+            console.error("CF Tools GSM list failed:", err.response?.data || err.message || err);
+
+            await interaction.editReply("CF Tools GSM list failed. Check Railway logs.");
         }
     }
 });
 
 // ===== MESSAGE PROCESSOR =====
 async function processInputMessage(msg) {
+
     if (msg.author.id === client.user.id) return;
     if (msg.channel.id !== INPUT_CHANNEL_ID) return;
 
@@ -357,6 +421,7 @@ async function processInputMessage(msg) {
 
     // ===== HIT =====
     if (isHit) {
+
         const hit = parseHit(content);
         if (!hit) return;
 
@@ -386,6 +451,7 @@ async function processInputMessage(msg) {
         }
 
         if (alertChannel) {
+
             try {
                 await alertsModule.handleAlerts(
                     hit,
@@ -411,6 +477,7 @@ async function processInputMessage(msg) {
 
     // ===== KILL =====
     if (isKill) {
+
         const kill = parseKill(content);
         if (!kill) return;
 
@@ -418,6 +485,7 @@ async function processInputMessage(msg) {
         const killerCFID = kill.killerLink?.split("/").pop();
 
         try {
+
             await pool.query(`
                 INSERT INTO player_deaths
                 (victim, victim_name, killer, killer_name, weapon, distance, x, y, killer_x, killer_y)
@@ -434,6 +502,7 @@ async function processInputMessage(msg) {
                 coordsKiller?.x || null,
                 coordsKiller?.y || null
             ]);
+
         } catch (err) {
             console.error("Death insert error:", err);
         }
@@ -444,11 +513,13 @@ async function processInputMessage(msg) {
         let last = { damage: "-", zone: "-" };
 
         if (lastHit.has(key)) {
+
             const hits = lastHit.get(key);
 
             const exact = hits.filter(h => h.distance === kill.distance);
 
             if (exact.length > 0) {
+
                 const before = exact
                     .filter(h => h.time <= killTime)
                     .sort((a, b) => b.time - a.time);
@@ -460,6 +531,7 @@ async function processInputMessage(msg) {
         }
 
         if (outputChannel) {
+
             await killfeedModule.sendKillEmbed({
                 outputChannel,
                 kill,
@@ -478,6 +550,7 @@ async function processInputMessage(msg) {
 
 // ===== MESSAGE HANDLER =====
 client.on("messageCreate", (msg) => {
+
     processingQueue = processingQueue
         .then(() => processInputMessage(msg))
         .catch((err) => {
