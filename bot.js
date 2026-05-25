@@ -166,9 +166,11 @@ client.on("interactionCreate", async interaction => {
     }
 
     if (interaction.commandName === "cfsync") {
-        await interaction.deferReply({ ephemeral: true });
-
         try {
+            if (!interaction.deferred && !interaction.replied) {
+                await interaction.deferReply();
+            }
+
             console.log("===== ALT SYNC DEBUG START =====");
             console.log("CFTOOLS_APP_ID exists:", !!process.env.CFTOOLS_APP_ID);
             console.log("CFTOOLS_APP_SECRET exists:", !!process.env.CFTOOLS_APP_SECRET);
@@ -181,9 +183,11 @@ client.on("interactionCreate", async interaction => {
             console.log("===== ALT SYNC SUCCESS =====");
             console.log(result);
 
-            await interaction.editReply(
-                `CF alt sync complete.\nFound: ${result.found}\nSaved: ${result.saved}\nAlerts: ${result.alerts}\nSkipped: ${result.skipped}`
-            );
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply(
+                    `CF alt sync complete.\nFound: ${result.found}\nSaved: ${result.saved}\nAlerts: ${result.alerts}\nSkipped: ${result.skipped}`
+                );
+            }
         } catch (err) {
             console.log("===== ALT SYNC FULL ERROR =====");
             console.error("MESSAGE:", err.message);
@@ -197,7 +201,13 @@ client.on("interactionCreate", async interaction => {
 
             console.error("RAW ERROR:", err);
 
-            await interaction.editReply("CF alt sync failed. Check Railway logs.");
+            try {
+                if (interaction.deferred || interaction.replied) {
+                    await interaction.editReply("CF alt sync failed. Check Railway logs.");
+                }
+            } catch (replyErr) {
+                console.error("Failed to send cfsync error reply:", replyErr);
+            }
         }
     }
 });
