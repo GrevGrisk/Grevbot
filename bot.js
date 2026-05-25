@@ -169,13 +169,34 @@ client.on("interactionCreate", async interaction => {
         await interaction.deferReply({ ephemeral: true });
 
         try {
+            console.log("===== ALT SYNC DEBUG START =====");
+            console.log("CFTOOLS_APP_ID exists:", !!process.env.CFTOOLS_APP_ID);
+            console.log("CFTOOLS_APP_SECRET exists:", !!process.env.CFTOOLS_APP_SECRET);
+            console.log("CFTOOLS_SERVER_API_ID:", process.env.CFTOOLS_SERVER_API_ID);
+            console.log("ALT_ALERT_CHANNEL_ID:", process.env.ALT_ALERT_CHANNEL_ID);
+            console.log("IP_HASH_SECRET exists:", !!process.env.IP_HASH_SECRET);
+
             const result = await altAccountModule.syncAndDetect(client);
+
+            console.log("===== ALT SYNC SUCCESS =====");
+            console.log(result);
 
             await interaction.editReply(
                 `CF alt sync complete.\nFound: ${result.found}\nSaved: ${result.saved}\nAlerts: ${result.alerts}\nSkipped: ${result.skipped}`
             );
         } catch (err) {
-            console.error("Manual alt sync error:", err.response?.data || err.message || err);
+            console.log("===== ALT SYNC FULL ERROR =====");
+            console.error("MESSAGE:", err.message);
+            console.error("STACK:", err.stack);
+
+            if (err.response) {
+                console.error("STATUS:", err.response.status);
+                console.error("DATA:", JSON.stringify(err.response.data, null, 2));
+                console.error("HEADERS:", JSON.stringify(err.response.headers, null, 2));
+            }
+
+            console.error("RAW ERROR:", err);
+
             await interaction.editReply("CF alt sync failed. Check Railway logs.");
         }
     }
