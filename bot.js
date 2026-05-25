@@ -10,6 +10,7 @@ process.on("unhandledRejection", (reason) => {
 const { Client, GatewayIntentBits, SlashCommandBuilder, Routes } = require("discord.js");
 const { REST } = require("@discordjs/rest");
 const crypto = require("crypto");
+const axios = require("axios");
 
 const pool = require("./db");
 
@@ -210,7 +211,10 @@ const commands = [
         ),
     new SlashCommandBuilder()
         .setName("testalert")
-        .setDescription("Trigger a test GrevBot alert")
+        .setDescription("Trigger a test GrevBot alert"),
+    new SlashCommandBuilder()
+        .setName("cftest")
+        .setDescription("Test CF Tools API")
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -302,6 +306,28 @@ client.on("interactionCreate", async interaction => {
 
     if (interaction.commandName === "testalert") {
         await testAlertCommand.execute(interaction);
+    }
+
+    if (interaction.commandName === "cftest") {
+        await interaction.deferReply({ ephemeral: true });
+
+        try {
+            const response = await axios.post(
+                "https://data.cftools.cloud/v1/auth/register",
+                {
+                    application_id: process.env.CFTOOLS_APP_ID,
+                    secret: process.env.CFTOOLS_APP_SECRET
+                }
+            );
+
+            console.log("CF Tools API test response:", response.data);
+
+            await interaction.editReply("CF Tools API connected successfully.");
+        } catch (err) {
+            console.error("CF Tools API test failed:", err.response?.data || err.message || err);
+
+            await interaction.editReply("CF Tools API failed. Check Railway logs.");
+        }
     }
 });
 
