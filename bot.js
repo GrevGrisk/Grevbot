@@ -221,7 +221,7 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName("cfbans")
-        .setDescription("Test CF Tools banlist endpoint")
+        .setDescription("Test CF Tools banmanager endpoint")
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -448,32 +448,72 @@ client.on("interactionCreate", async interaction => {
 
             for (const banlistId of banlists) {
                 const response = await axios.get(
-                    `https://data.cftools.cloud/v1/banlist/${banlistId}/bans`,
+                    `https://api.cftools.cloud/app/v1/banmanager/${banlistId}/query`,
                     {
                         headers: {
                             "User-Agent": process.env.CFTOOLS_APP_ID,
                             "Authorization": `Bearer ${token}`
+                        },
+                        params: {
+                            page: 1,
+                            limit: 5,
+                            tz: "Europe/Berlin",
+                            sort: JSON.stringify({
+                                key: "created_at",
+                                dir: -1
+                            }),
+                            query: JSON.stringify({
+                                delta: 0,
+                                full: false,
+                                search_term: null,
+                                date: {
+                                    start: {
+                                        enabled: false,
+                                        value: new Date().toISOString()
+                                    },
+                                    end: {
+                                        enabled: false,
+                                        value: new Date().toISOString()
+                                    }
+                                },
+                                position: {
+                                    available: false,
+                                    enabled: false,
+                                    coordinates: [0, 0],
+                                    radius: 100
+                                }
+                            })
                         }
                     }
                 );
 
-                const bans = Array.isArray(response.data)
-                    ? response.data
-                    : (response.data.bans || response.data.data || response.data.entries || []);
+                const data = response.data;
 
-                console.log(`===== CF TOOLS BANLIST ${banlistId} SUMMARY =====`);
-                console.log("Ban count:", bans.length);
+                console.log(`===== CF TOOLS BANLIST ${banlistId} RESPONSE =====`);
 
-                if (bans.length > 0) {
-                    console.log("Sample ban keys:", Object.keys(bans[0]));
-                    console.log("Sample ban entry:", JSON.stringify(bans[0], null, 2));
+                if (Array.isArray(data)) {
+                    console.log("Array response count:", data.length);
+
+                    if (data.length > 0) {
+                        console.log("Sample keys:", Object.keys(data[0]));
+                        console.log("Sample entry:", JSON.stringify(data[0], null, 2));
+                    }
+                } else {
+                    console.log("Top-level keys:", Object.keys(data));
+                    console.log("Full sample response:", JSON.stringify(data, null, 2));
                 }
             }
 
             await interaction.editReply("CF Tools banlists fetched. Check Railway logs.");
         } catch (err) {
-            console.error("CF Tools banlist lookup failed:", err.response?.data || err.message || err);
-            await interaction.editReply("CF Tools banlist lookup failed. Check Railway logs.");
+            console.error(
+                "CF Tools banlist lookup failed:",
+                err.response?.data || err.message || err
+            );
+
+            await interaction.editReply(
+                "CF Tools banlist lookup failed. Check Railway logs."
+            );
         }
     }
 });
