@@ -110,7 +110,7 @@ client.on("clientReady", async () => {
         } finally {
             altSyncRunning = false;
         }
-    }, 5 * 60 * 1000);
+    }, 60 * 1000);
 
     setInterval(async () => {
         if (playerIntelRunning) return;
@@ -125,7 +125,7 @@ client.on("clientReady", async () => {
         } finally {
             playerIntelRunning = false;
         }
-    }, 5 * 60 * 1000);
+    }, 60 * 1000);
 });
 
 // ===== coords =====
