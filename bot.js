@@ -217,7 +217,11 @@ const commands = [
             option.setName("cftools_id")
                 .setDescription("CFTools ID")
                 .setRequired(true)
-        )
+        ),
+
+    new SlashCommandBuilder()
+        .setName("cfbans")
+        .setDescription("Test CF Tools banlist endpoint")
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -423,6 +427,53 @@ client.on("interactionCreate", async interaction => {
         } catch (err) {
             console.error("CF Tools player lookup failed:", err.response?.data || err.message || err);
             await interaction.editReply("CF Tools player lookup failed. Check Railway logs.");
+        }
+    }
+
+    if (interaction.commandName === "cfbans") {
+        await interaction.deferReply({ ephemeral: true });
+
+        try {
+            const token = await getCFToolsToken();
+
+            const banlists = [
+                process.env.CFTOOLS_BANLIST_ID_1,
+                process.env.CFTOOLS_BANLIST_ID_2
+            ].filter(Boolean);
+
+            if (banlists.length === 0) {
+                await interaction.editReply("No banlist IDs configured.");
+                return;
+            }
+
+            for (const banlistId of banlists) {
+                const response = await axios.get(
+                    `https://data.cftools.cloud/v1/banlist/${banlistId}/bans`,
+                    {
+                        headers: {
+                            "User-Agent": process.env.CFTOOLS_APP_ID,
+                            "Authorization": `Bearer ${token}`
+                        }
+                    }
+                );
+
+                const bans = Array.isArray(response.data)
+                    ? response.data
+                    : (response.data.bans || response.data.data || response.data.entries || []);
+
+                console.log(`===== CF TOOLS BANLIST ${banlistId} SUMMARY =====`);
+                console.log("Ban count:", bans.length);
+
+                if (bans.length > 0) {
+                    console.log("Sample ban keys:", Object.keys(bans[0]));
+                    console.log("Sample ban entry:", JSON.stringify(bans[0], null, 2));
+                }
+            }
+
+            await interaction.editReply("CF Tools banlists fetched. Check Railway logs.");
+        } catch (err) {
+            console.error("CF Tools banlist lookup failed:", err.response?.data || err.message || err);
+            await interaction.editReply("CF Tools banlist lookup failed. Check Railway logs.");
         }
     }
 });
