@@ -42,6 +42,15 @@ function idLink(id, cftoolsId) {
     return url ? `[${id}](${url})` : id;
 }
 
+function divider() {
+    return "━━━━━━━━━━━━━━━━━━━━";
+}
+
+function formatDate(value) {
+    if (!value) return "Unknown";
+    return new Date(value).toISOString().split("T")[0];
+}
+
 async function getCFToolsToken() {
     const response = await axios.post(
         `${CF_BASE}/v1/auth/register`,
@@ -214,6 +223,54 @@ async function createAltCase(currentPlayerId, matchedPlayerId) {
     ]);
 }
 
+function buildAltAlertEmbed(current, matched) {
+    return new EmbedBuilder()
+        .setTitle("🚨 GrevBot Alt Account Detection")
+        .setColor(0xff0000)
+        .setDescription(
+            "**Possible alt account detected**\n" +
+            "A player has joined using an IP address previously linked to another account."
+        )
+        .addFields(
+            {
+                name: "👤 Current Player",
+                value:
+                    `${divider()}\n` +
+                    `🎮 **Name**\n${playerLink(current.player_name, current.cftools_id)}\n\n` +
+                    `🆔 **CFTools ID**\n${idLink(current.cftools_id, current.cftools_id)}\n\n` +
+                    `🔗 **Steam64 ID**\n${idLink(current.steam64, current.cftools_id)}\n\n` +
+                    `🌐 **IP Address Matched**\n\`${current.ip_masked}\`\n\n` +
+                    `🏢 **Provider**\n${current.provider || "Unknown"}\n\n` +
+                    `📍 **Country of Origin**\n${current.country_name || current.country_code || "Unknown"}`,
+                inline: false
+            },
+            {
+                name: "🕵️ Matched Previous Account",
+                value:
+                    `${divider()}\n` +
+                    `🎮 **Name**\n${playerLink(matched.last_name, matched.cftools_id)}\n\n` +
+                    `🆔 **CFTools ID**\n${idLink(matched.cftools_id, matched.cftools_id)}\n\n` +
+                    `🔗 **Steam64 ID**\n${idLink(matched.steam64, matched.cftools_id)}\n\n` +
+                    `🌐 **IP Address Matched**\n\`${matched.ip_masked || current.ip_masked}\`\n\n` +
+                    `🏢 **Provider**\n${matched.provider || current.provider || "Unknown"}\n\n` +
+                    `📍 **Country of Origin**\n${matched.country_name || matched.country_code || current.country_name || "Unknown"}`,
+                inline: false
+            },
+            {
+                name: "📊 Match Details",
+                value:
+                    `${divider()}\n` +
+                    `⚠️ **Match Type**\nShared IP\n\n` +
+                    `🔥 **Confidence**\nHIGH\n\n` +
+                    `📅 **First Seen**\n${formatDate(matched.first_seen)}\n\n` +
+                    `📈 **Times Seen**\n${matched.seen_count || 1}`,
+                inline: false
+            }
+        )
+        .setFooter({ text: "GrevBot • Alt account detection" })
+        .setTimestamp();
+}
+
 async function sendAltAlert(client, current, matched) {
     const channelId = process.env.ALT_ALERT_CHANNEL_ID || "1508534144286589132";
 
@@ -227,46 +284,7 @@ async function sendAltAlert(client, current, matched) {
 
     if (!channel) return;
 
-    const embed = new EmbedBuilder()
-        .setTitle("GrevBot alt account detection")
-        .setColor(0xff0000)
-        .setDescription("🚨 **Possible alt account detected !** 🚨")
-        .addFields(
-            {
-                name: "👤 Current Player",
-                value:
-                    `**Name:** ${playerLink(current.player_name, current.cftools_id)}\n` +
-                    `**CFTools ID:** ${idLink(current.cftools_id, current.cftools_id)}\n` +
-                    `**Steam 64 ID:** ${idLink(current.steam64, current.cftools_id)}\n` +
-                    `**IP address matched:** ${current.ip_masked}\n` +
-                    `**Provider:** ${current.provider || "Unknown"}\n` +
-                    `**Country of origin:** ${current.country_name || current.country_code || "Unknown"}`,
-                inline: false
-            },
-            {
-                name: "🧾 Matched previous account",
-                value:
-                    `**Name:** ${playerLink(matched.last_name, matched.cftools_id)}\n` +
-                    `**CFTools ID:** ${idLink(matched.cftools_id, matched.cftools_id)}\n` +
-                    `**Steam 64 ID:** ${idLink(matched.steam64, matched.cftools_id)}\n` +
-                    `**IP address matched:** ${matched.ip_masked || current.ip_masked}\n` +
-                    `**Provider:** ${matched.provider || current.provider || "Unknown"}\n` +
-                    `**Country of origin:** ${matched.country_name || matched.country_code || current.country_name || "Unknown"}`,
-                inline: false
-            },
-            {
-                name: "🔎 Match Details",
-                value:
-                    `**Match Type:** Shared IP\n` +
-                    `**Confidence:** HIGH\n` +
-                    `**First Seen:** ${matched.first_seen ? new Date(matched.first_seen).toISOString().split("T")[0] : "Unknown"}\n` +
-                    `**Times Seen:** ${matched.seen_count || 1}`,
-                inline: false
-            }
-        )
-        .setFooter({ text: "GrevBot • Alt account detection" })
-        .setTimestamp();
-
+    const embed = buildAltAlertEmbed(current, matched);
     await channel.send({ embeds: [embed] });
 }
 
@@ -274,46 +292,27 @@ async function sendTestAltAlert(client) {
     const channelId = process.env.ALT_ALERT_CHANNEL_ID || "1508534144286589132";
     const channel = await client.channels.fetch(channelId);
 
-    const embed = new EmbedBuilder()
-        .setTitle("GrevBot alt account detection")
-        .setColor(0xff0000)
-        .setDescription("🚨 **Possible alt account detected !** 🚨")
-        .addFields(
-            {
-                name: "👤 Current Player",
-                value:
-                    `**Name:** [BillyBOB](https://app.cftools.cloud/profile/6489fd3e8eabcc78746ab6fd)\n` +
-                    `**CFTools ID:** [6489fd3e8eabcc78746ab6fd](https://app.cftools.cloud/profile/6489fd3e8eabcc78746ab6fd)\n` +
-                    `**Steam 64 ID:** [76561198000000001](https://app.cftools.cloud/profile/6489fd3e8eabcc78746ab6fd)\n` +
-                    `**IP address matched:** 37.166.xxx.xxx\n` +
-                    `**Provider:** Free Mobile SAS\n` +
-                    `**Country of origin:** France`,
-                inline: false
-            },
-            {
-                name: "🧾 Matched previous account",
-                value:
-                    `**Name:** [SneakyAlt](https://app.cftools.cloud/profile/6489fd3e8eabcc78746ab111)\n` +
-                    `**CFTools ID:** [6489fd3e8eabcc78746ab111](https://app.cftools.cloud/profile/6489fd3e8eabcc78746ab111)\n` +
-                    `**Steam 64 ID:** [76561198000000099](https://app.cftools.cloud/profile/6489fd3e8eabcc78746ab111)\n` +
-                    `**IP address matched:** 37.166.xxx.xxx\n` +
-                    `**Provider:** Free Mobile SAS\n` +
-                    `**Country of origin:** France`,
-                inline: false
-            },
-            {
-                name: "🔎 Match Details",
-                value:
-                    `**Match Type:** Shared IP\n` +
-                    `**Confidence:** HIGH\n` +
-                    `**First Seen:** 2026-05-25\n` +
-                    `**Times Seen:** 14`,
-                inline: false
-            }
-        )
-        .setFooter({ text: "GrevBot • Alt account detection" })
-        .setTimestamp();
+    const current = {
+        player_name: "BillyBOB",
+        cftools_id: "6489fd3e8eabcc78746ab6fd",
+        steam64: "76561198000000001",
+        ip_masked: "37.166.xxx.xxx",
+        provider: "Free Mobile SAS",
+        country_name: "France"
+    };
 
+    const matched = {
+        last_name: "SneakyAlt",
+        cftools_id: "6489fd3e8eabcc78746ab111",
+        steam64: "76561198000000099",
+        ip_masked: "37.166.xxx.xxx",
+        provider: "Free Mobile SAS",
+        country_name: "France",
+        first_seen: "2026-05-25",
+        seen_count: 14
+    };
+
+    const embed = buildAltAlertEmbed(current, matched);
     await channel.send({ embeds: [embed] });
 }
 
@@ -330,7 +329,7 @@ async function manualAltCheck(cftoolsId) {
             found: false,
             embeds: [
                 new EmbedBuilder()
-                    .setTitle("GrevBot alt account detection")
+                    .setTitle("🔍 GrevBot Manual Alt Check")
                     .setColor(0xff9900)
                     .setDescription("⚠️ No stored player found for that CFTools ID.")
                     .setFooter({ text: "GrevBot • Manual alt check" })
@@ -370,15 +369,15 @@ async function manualAltCheck(cftoolsId) {
             found: true,
             embeds: [
                 new EmbedBuilder()
-                    .setTitle("GrevBot alt account detection")
+                    .setTitle("🔍 GrevBot Manual Alt Check")
                     .setColor(0x00aa00)
                     .setDescription("✅ No linked alt accounts found by shared IP.")
                     .addFields({
                         name: "👤 Checked Player",
                         value:
-                            `**Name:** ${playerLink(player.last_name, player.cftools_id)}\n` +
-                            `**CFTools ID:** ${idLink(player.cftools_id, player.cftools_id)}\n` +
-                            `**Steam 64 ID:** ${idLink(player.steam64, player.cftools_id)}`,
+                            `🎮 **Name**\n${playerLink(player.last_name, player.cftools_id)}\n\n` +
+                            `🆔 **CFTools ID**\n${idLink(player.cftools_id, player.cftools_id)}\n\n` +
+                            `🔗 **Steam64 ID**\n${idLink(player.steam64, player.cftools_id)}`,
                         inline: false
                     })
                     .setFooter({ text: "GrevBot • Manual alt check" })
@@ -388,24 +387,26 @@ async function manualAltCheck(cftoolsId) {
     }
 
     const embed = new EmbedBuilder()
-        .setTitle("GrevBot alt account detection")
+        .setTitle("🚨 GrevBot Manual Alt Check")
         .setColor(0xff0000)
-        .setDescription("🚨 **Manual alt account check found possible matches** 🚨")
+        .setDescription("Possible alt accounts found through shared IP history.")
         .addFields(
             {
                 name: "👤 Checked Player",
                 value:
-                    `**Name:** ${playerLink(player.last_name, player.cftools_id)}\n` +
-                    `**CFTools ID:** ${idLink(player.cftools_id, player.cftools_id)}\n` +
-                    `**Steam 64 ID:** ${idLink(player.steam64, player.cftools_id)}`,
+                    `${divider()}\n` +
+                    `🎮 **Name**\n${playerLink(player.last_name, player.cftools_id)}\n\n` +
+                    `🆔 **CFTools ID**\n${idLink(player.cftools_id, player.cftools_id)}\n\n` +
+                    `🔗 **Steam64 ID**\n${idLink(player.steam64, player.cftools_id)}`,
                 inline: false
             },
             {
-                name: "🔎 Match Summary",
+                name: "📊 Match Summary",
                 value:
-                    `**Match Type:** Shared IP\n` +
-                    `**Confidence:** HIGH\n` +
-                    `**Matches Found:** ${matches.length}`,
+                    `${divider()}\n` +
+                    `⚠️ **Match Type**\nShared IP\n\n` +
+                    `🔥 **Confidence**\nHIGH\n\n` +
+                    `📈 **Matches Found**\n${matches.length}`,
                 inline: false
             }
         )
@@ -416,23 +417,24 @@ async function manualAltCheck(cftoolsId) {
 
     for (const match of limitedMatches) {
         embed.addFields({
-            name: `🧾 Matched account: ${match.last_name || "Unknown"}`,
+            name: `🕵️ Matched Account: ${match.last_name || "Unknown"}`,
             value:
-                `**Name:** ${playerLink(match.last_name, match.cftools_id)}\n` +
-                `**CFTools ID:** ${idLink(match.cftools_id, match.cftools_id)}\n` +
-                `**Steam 64 ID:** ${idLink(match.steam64, match.cftools_id)}\n` +
-                `**IP address matched:** ${match.ip_masked || "Hidden"}\n` +
-                `**Provider:** ${match.provider || "Unknown"}\n` +
-                `**Country of origin:** ${match.country_name || match.country_code || "Unknown"}\n` +
-                `**First Seen:** ${match.first_seen ? new Date(match.first_seen).toISOString().split("T")[0] : "Unknown"}\n` +
-                `**Times Seen:** ${match.seen_count || 1}`,
+                `${divider()}\n` +
+                `🎮 **Name**\n${playerLink(match.last_name, match.cftools_id)}\n\n` +
+                `🆔 **CFTools ID**\n${idLink(match.cftools_id, match.cftools_id)}\n\n` +
+                `🔗 **Steam64 ID**\n${idLink(match.steam64, match.cftools_id)}\n\n` +
+                `🌐 **IP Address Matched**\n\`${match.ip_masked || "Hidden"}\`\n\n` +
+                `🏢 **Provider**\n${match.provider || "Unknown"}\n\n` +
+                `📍 **Country of Origin**\n${match.country_name || match.country_code || "Unknown"}\n\n` +
+                `📅 **First Seen**\n${formatDate(match.first_seen)}\n\n` +
+                `📈 **Times Seen**\n${match.seen_count || 1}`,
             inline: false
         });
     }
 
     if (matches.length > 10) {
         embed.addFields({
-            name: "➕ More matches",
+            name: "➕ More Matches",
             value: `${matches.length - 10} additional matches hidden to keep the embed readable.`,
             inline: false
         });
