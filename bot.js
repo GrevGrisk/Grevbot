@@ -51,12 +51,27 @@ const commands = [
                 .setDescription("CF ID")
                 .setRequired(true)
         ),
+
     new SlashCommandBuilder()
         .setName("testalert")
         .setDescription("Trigger a test GrevBot alert"),
+
     new SlashCommandBuilder()
         .setName("cfsync")
-        .setDescription("Run alt account sync manually")
+        .setDescription("Run alt account sync manually"),
+
+    new SlashCommandBuilder()
+        .setName("testalt")
+        .setDescription("Send test alt account alert embed"),
+
+    new SlashCommandBuilder()
+        .setName("altcheck")
+        .setDescription("Manual alt account check by CFTools ID")
+        .addStringOption(option =>
+            option.setName("cftools_id")
+                .setDescription("CFTools ID")
+                .setRequired(true)
+        )
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -163,6 +178,39 @@ client.on("interactionCreate", async interaction => {
 
     if (interaction.commandName === "testalert") {
         await testAlertCommand.execute(interaction);
+    }
+
+    if (interaction.commandName === "testalt") {
+        try {
+            if (!interaction.deferred && !interaction.replied) {
+                await interaction.deferReply({ ephemeral: true });
+            }
+
+            await altAccountModule.sendTestAltAlert(client);
+
+            await interaction.editReply("Test alt alert sent.");
+        } catch (err) {
+            console.error("Test alt alert error:", err);
+            await interaction.editReply("Failed to send test alt alert.");
+        }
+    }
+
+    if (interaction.commandName === "altcheck") {
+        try {
+            if (!interaction.deferred && !interaction.replied) {
+                await interaction.deferReply({ ephemeral: true });
+            }
+
+            const cftoolsId = interaction.options.getString("cftools_id");
+            const result = await altAccountModule.manualAltCheck(cftoolsId);
+
+            await interaction.editReply({
+                embeds: result.embeds
+            });
+        } catch (err) {
+            console.error("Manual alt check error:", err);
+            await interaction.editReply("Manual alt check failed. Check Railway logs.");
+        }
     }
 
     if (interaction.commandName === "cfsync") {
