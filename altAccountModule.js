@@ -42,10 +42,6 @@ function idLink(id, cftoolsId) {
     return url ? `[${id}](${url})` : id;
 }
 
-function divider() {
-    return "━━━━━━━━━━━━━━━━━━━━";
-}
-
 function formatDate(value) {
     if (!value) return "Unknown";
     return new Date(value).toISOString().split("T")[0];
@@ -227,43 +223,37 @@ function buildAltAlertEmbed(current, matched) {
     return new EmbedBuilder()
         .setTitle("🚨 GrevBot Alt Account Detection")
         .setColor(0xff0000)
-        .setDescription(
-            "**Possible alt account detected**\n" +
-            "A player has joined using an IP address previously linked to another account."
-        )
+        .setDescription("**Possible alt account detected**\nShared IP found between two accounts.")
         .addFields(
             {
                 name: "👤 Current Player",
                 value:
-                    `${divider()}\n` +
-                    `🎮 **Name**\n${playerLink(current.player_name, current.cftools_id)}\n\n` +
-                    `🆔 **CFTools ID**\n${idLink(current.cftools_id, current.cftools_id)}\n\n` +
-                    `🔗 **Steam64 ID**\n${idLink(current.steam64, current.cftools_id)}\n\n` +
-                    `🌐 **IP Address Matched**\n\`${current.ip_masked}\`\n\n` +
-                    `🏢 **Provider**\n${current.provider || "Unknown"}\n\n` +
-                    `📍 **Country of Origin**\n${current.country_name || current.country_code || "Unknown"}`,
-                inline: false
+                    `🎮 **Name:** ${playerLink(current.player_name, current.cftools_id)}\n` +
+                    `🆔 **CFTools:** ${idLink(current.cftools_id, current.cftools_id)}\n` +
+                    `🔗 **Steam64:** ${idLink(current.steam64, current.cftools_id)}\n` +
+                    `🌐 **IP:** \`${current.ip_masked}\`\n` +
+                    `🏢 **Provider:** ${current.provider || "Unknown"}\n` +
+                    `📍 **Country:** ${current.country_name || current.country_code || "Unknown"}`,
+                inline: true
             },
             {
-                name: "🕵️ Matched Previous Account",
+                name: "🕵️ Matched Account",
                 value:
-                    `${divider()}\n` +
-                    `🎮 **Name**\n${playerLink(matched.last_name, matched.cftools_id)}\n\n` +
-                    `🆔 **CFTools ID**\n${idLink(matched.cftools_id, matched.cftools_id)}\n\n` +
-                    `🔗 **Steam64 ID**\n${idLink(matched.steam64, matched.cftools_id)}\n\n` +
-                    `🌐 **IP Address Matched**\n\`${matched.ip_masked || current.ip_masked}\`\n\n` +
-                    `🏢 **Provider**\n${matched.provider || current.provider || "Unknown"}\n\n` +
-                    `📍 **Country of Origin**\n${matched.country_name || matched.country_code || current.country_name || "Unknown"}`,
-                inline: false
+                    `🎮 **Name:** ${playerLink(matched.last_name, matched.cftools_id)}\n` +
+                    `🆔 **CFTools:** ${idLink(matched.cftools_id, matched.cftools_id)}\n` +
+                    `🔗 **Steam64:** ${idLink(matched.steam64, matched.cftools_id)}\n` +
+                    `🌐 **IP:** \`${matched.ip_masked || current.ip_masked}\`\n` +
+                    `🏢 **Provider:** ${matched.provider || current.provider || "Unknown"}\n` +
+                    `📍 **Country:** ${matched.country_name || matched.country_code || current.country_name || "Unknown"}`,
+                inline: true
             },
             {
                 name: "📊 Match Details",
                 value:
-                    `${divider()}\n` +
-                    `⚠️ **Match Type**\nShared IP\n\n` +
-                    `🔥 **Confidence**\nHIGH\n\n` +
-                    `📅 **First Seen**\n${formatDate(matched.first_seen)}\n\n` +
-                    `📈 **Times Seen**\n${matched.seen_count || 1}`,
+                    `⚠️ **Type:** Shared IP\n` +
+                    `🔥 **Confidence:** HIGH\n` +
+                    `📅 **First Seen:** ${formatDate(matched.first_seen)}\n` +
+                    `📈 **Times Seen:** ${matched.seen_count || 1}`,
                 inline: false
             }
         )
@@ -375,9 +365,9 @@ async function manualAltCheck(cftoolsId) {
                     .addFields({
                         name: "👤 Checked Player",
                         value:
-                            `🎮 **Name**\n${playerLink(player.last_name, player.cftools_id)}\n\n` +
-                            `🆔 **CFTools ID**\n${idLink(player.cftools_id, player.cftools_id)}\n\n` +
-                            `🔗 **Steam64 ID**\n${idLink(player.steam64, player.cftools_id)}`,
+                            `🎮 **Name:** ${playerLink(player.last_name, player.cftools_id)}\n` +
+                            `🆔 **CFTools:** ${idLink(player.cftools_id, player.cftools_id)}\n` +
+                            `🔗 **Steam64:** ${idLink(player.steam64, player.cftools_id)}`,
                         inline: false
                     })
                     .setFooter({ text: "GrevBot • Manual alt check" })
@@ -394,19 +384,17 @@ async function manualAltCheck(cftoolsId) {
             {
                 name: "👤 Checked Player",
                 value:
-                    `${divider()}\n` +
-                    `🎮 **Name**\n${playerLink(player.last_name, player.cftools_id)}\n\n` +
-                    `🆔 **CFTools ID**\n${idLink(player.cftools_id, player.cftools_id)}\n\n` +
-                    `🔗 **Steam64 ID**\n${idLink(player.steam64, player.cftools_id)}`,
+                    `🎮 **Name:** ${playerLink(player.last_name, player.cftools_id)}\n` +
+                    `🆔 **CFTools:** ${idLink(player.cftools_id, player.cftools_id)}\n` +
+                    `🔗 **Steam64:** ${idLink(player.steam64, player.cftools_id)}`,
                 inline: false
             },
             {
                 name: "📊 Match Summary",
                 value:
-                    `${divider()}\n` +
-                    `⚠️ **Match Type**\nShared IP\n\n` +
-                    `🔥 **Confidence**\nHIGH\n\n` +
-                    `📈 **Matches Found**\n${matches.length}`,
+                    `⚠️ **Type:** Shared IP\n` +
+                    `🔥 **Confidence:** HIGH\n` +
+                    `📈 **Matches Found:** ${matches.length}`,
                 inline: false
             }
         )
@@ -417,25 +405,24 @@ async function manualAltCheck(cftoolsId) {
 
     for (const match of limitedMatches) {
         embed.addFields({
-            name: `🕵️ Matched Account: ${match.last_name || "Unknown"}`,
+            name: `🕵️ ${match.last_name || "Unknown"}`,
             value:
-                `${divider()}\n` +
-                `🎮 **Name**\n${playerLink(match.last_name, match.cftools_id)}\n\n` +
-                `🆔 **CFTools ID**\n${idLink(match.cftools_id, match.cftools_id)}\n\n` +
-                `🔗 **Steam64 ID**\n${idLink(match.steam64, match.cftools_id)}\n\n` +
-                `🌐 **IP Address Matched**\n\`${match.ip_masked || "Hidden"}\`\n\n` +
-                `🏢 **Provider**\n${match.provider || "Unknown"}\n\n` +
-                `📍 **Country of Origin**\n${match.country_name || match.country_code || "Unknown"}\n\n` +
-                `📅 **First Seen**\n${formatDate(match.first_seen)}\n\n` +
-                `📈 **Times Seen**\n${match.seen_count || 1}`,
-            inline: false
+                `🎮 **Name:** ${playerLink(match.last_name, match.cftools_id)}\n` +
+                `🆔 **CFTools:** ${idLink(match.cftools_id, match.cftools_id)}\n` +
+                `🔗 **Steam64:** ${idLink(match.steam64, match.cftools_id)}\n` +
+                `🌐 **IP:** \`${match.ip_masked || "Hidden"}\`\n` +
+                `🏢 **Provider:** ${match.provider || "Unknown"}\n` +
+                `📍 **Country:** ${match.country_name || match.country_code || "Unknown"}\n` +
+                `📅 **First Seen:** ${formatDate(match.first_seen)}\n` +
+                `📈 **Times Seen:** ${match.seen_count || 1}`,
+            inline: true
         });
     }
 
     if (matches.length > 10) {
         embed.addFields({
             name: "➕ More Matches",
-            value: `${matches.length - 10} additional matches hidden to keep the embed readable.`,
+            value: `${matches.length - 10} additional matches hidden.`,
             inline: false
         });
     }
