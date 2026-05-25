@@ -77,6 +77,15 @@ const commands = [
             option.setName("cftools_id")
                 .setDescription("CFTools ID")
                 .setRequired(true)
+        ),
+
+    new SlashCommandBuilder()
+        .setName("cfbancheck")
+        .setDescription("Check CFTools banlists for a CFTools ID")
+        .addStringOption(option =>
+            option.setName("cftools_id")
+                .setDescription("CFTools ID")
+                .setRequired(true)
         )
 ].map(cmd => cmd.toJSON());
 
@@ -249,6 +258,37 @@ client.on("interactionCreate", async interaction => {
         }
     }
 
+    if (interaction.commandName === "cfbancheck") {
+        try {
+            if (!interaction.deferred && !interaction.replied) {
+                await interaction.deferReply({ ephemeral: true });
+            }
+
+            const cftoolsId = interaction.options.getString("cftools_id");
+            const result = await altAccountModule.checkBanlistsForCftoolsId(cftoolsId);
+
+            let message = `Banlist check for CFTools ID: ${cftoolsId}\n`;
+            message += `Total bans found: ${result.totalBans}\n\n`;
+
+            for (const item of result.results) {
+                if (item.ok) {
+                    message += `Banlist ${item.banlistId}: ${item.count} match(es)\n`;
+                } else {
+                    message += `Banlist ${item.banlistId}: ERROR ${JSON.stringify(item.error)}\n`;
+                }
+            }
+
+            if (result.totalBans > 0) {
+                message += "\nPlayer marked as banned for subnet/provider detection.";
+            }
+
+            await interaction.editReply(message);
+        } catch (err) {
+            console.error("CF bancheck error:", err.response?.data || err.message || err);
+            await interaction.editReply("CF bancheck failed. Check Railway logs.");
+        }
+    }
+
     if (interaction.commandName === "cfsync") {
         try {
             if (!interaction.deferred && !interaction.replied) {
@@ -260,7 +300,7 @@ client.on("interactionCreate", async interaction => {
 
             await interaction.editReply(
                 `CF sync complete.\n` +
-                `Alt check: Found ${altResult.found}, Saved ${altResult.saved}, Alerts ${altResult.alerts}, Skipped ${altResult.skipped}\n` +
+                `Alt check: Found ${altResult.found}, Saved ${altResult.saved}, Alerts ${altResult.alerts}, Subnet alerts ${altResult.subnetAlerts}, Skipped ${altResult.skipped}\n` +
                 `Player intel: Checked ${intelResult.checked}, Alerts ${intelResult.alerts}`
             );
         } catch (err) {
