@@ -45,14 +45,8 @@ function getDayZHours(player) {
     return Math.round((seconds / 3600) * 10) / 10;
 }
 
-function getBanCount(player) {
-    return (
-        player?.info?.ban_count ||
-        player?.info?.bans?.score ||
-        player?.persona?.bans?.game ||
-        player?.persona?.bans?.vac ||
-        0
-    );
+function getServerBanCount(player) {
+    return player?.info?.ban_count || 0;
 }
 
 function getPlayerData(player) {
@@ -62,7 +56,7 @@ function getPlayerData(player) {
         steam64: player?.gamedata?.steam64 || "Unknown",
         steamCreated: getSteamCreationDate(player),
         dayzHours: getDayZHours(player),
-        banCount: getBanCount(player)
+        serverBanCount: getServerBanCount(player)
     };
 }
 
@@ -147,15 +141,15 @@ function buildLowHoursEmbed(data) {
 
 function buildPreviousBansEmbed(data) {
     return new EmbedBuilder()
-        .setTitle("🔴 Previous Bans Alert")
+        .setTitle("🔴 Previous Server Bans Alert")
         .setColor(0xff0000)
-        .setDescription("**A player with previous bans on his account has logged onto the server.**")
+        .setDescription("**A player with previous server bans on his account has logged onto the server.**")
         .addFields(
             {
                 name: "👤 Player",
                 value:
                     `${basePlayerField(data)}\n` +
-                    `🚫 **Number of bans:** ${data.banCount}`,
+                    `🚫 **Number of server bans:** ${data.serverBanCount}`,
                 inline: false
             }
         )
@@ -209,8 +203,8 @@ async function scanAndAlert(client) {
             }
         }
 
-        if (data.banCount > 0) {
-            const key = `bans:${data.steam64}`;
+        if (data.serverBanCount > 0) {
+            const key = `serverbans:${data.steam64}`;
             if (!sentAlerts.has(key)) {
                 sentAlerts.add(key);
                 await sendEmbed(client, buildPreviousBansEmbed(data));
@@ -229,7 +223,7 @@ async function sendTestIntelAlerts(client) {
         steam64: "76561198000000001",
         steamCreated: "2026-05-25",
         dayzHours: 2.3,
-        banCount: 3
+        serverBanCount: 3
     };
 
     await sendEmbed(client, buildNewSteamEmbed(testData));
