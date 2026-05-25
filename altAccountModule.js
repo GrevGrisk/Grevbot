@@ -4,12 +4,20 @@ const { EmbedBuilder } = require("discord.js");
 const pool = require("./db");
 
 const CF_BASE = "https://data.cftools.cloud";
+const BAN_EVASION_WINDOW_HOURS = 3;
 
 function maskIP(ip) {
     if (!ip) return "Unknown";
     const parts = ip.split(".");
     if (parts.length !== 4) return "Hidden";
     return `${parts[0]}.${parts[1]}.xxx.xxx`;
+}
+
+function subnetIP(ip) {
+    if (!ip) return null;
+    const parts = ip.split(".");
+    if (parts.length !== 4) return null;
+    return `${parts[0]}.${parts[1]}.${parts[2]}.xxx`;
 }
 
 function hashIP(ip) {
@@ -45,6 +53,11 @@ function idLink(id, cftoolsId) {
 function formatDate(value) {
     if (!value) return "Unknown";
     return new Date(value).toISOString().split("T")[0];
+}
+
+function formatDateTime(value) {
+    if (!value) return "Unknown";
+    return new Date(value).toISOString().replace("T", " ").split(".")[0] + " UTC";
 }
 
 async function getCFToolsToken() {
@@ -84,6 +97,68 @@ function normalizePlayers(list) {
     return Array.isArray(list)
         ? list
         : (list.sessions || list.players || list.data || []);
+}
+
+function normalizeBanResponse(data) {
+    if (Array.isArray(data)) return data;
+    return data?.bans || data?.data || data?.entries || data?.results || [];
+}
+
+async function checkBanlistsForCftoolsId(cftoolsId) {
+    const token = await getCFToolsToken();
+
+    const banlists = [
+        process.env.CFTOOLS_BANLIST_ID_1,
+        process.env.CFTOOLS_BANLIST_ID_2
+    ].filter(Boolean);
+
+    const results = [];
+
+    for (const banlistId of banlists) {
+        try {
+            const response = await axios.get(
+                `${CF_BASE}/v1/banlist/${banlistId}/bans`,
+                {
+                    headers: {
+                        "User-Agent": process.env.CFTOOLS_APP_ID,
+                        "Authorization": `Bearer ${token}`
+                    },
+                    params: {
+                        filter: cftoolsId
+                    }
+                }
+            );
+
+            const bans = normalizeBanResponse(response.data);
+
+            results.push({
+                banlistId,
+                ok: true,
+                count: bans.length,
+                bans,
+                rawKeys: response.data && typeof response.data === "object" ? Object.keys(response.data) : []
+            });
+        } catch (err) {
+            results.push({
+                banlistId,
+                ok: false,
+                count: 0,
+                error: err.response?.data || err.message || err
+            });
+        }
+    }
+
+    const totalBans = results.reduce((sum, item) => sum + item.count, 0);
+
+    if (totalBans > 0) {
+        await markPlayerBannedByCFToolsId(cftoolsId);
+    }
+
+    return {
+        cftoolsId,
+        totalBans,
+        results
+    };
 }
 
 async function getOrCreatePlayer(player) {
@@ -129,6 +204,7 @@ async function findPreviousIpMatches(ipHash, steam64) {
             ap.beguid,
             ap.last_name,
             ail.ip_masked,
+            ail.ip_subnet,
             ail.provider,
             ail.country_code,
             ail.country_name,
@@ -141,6 +217,44 @@ async function findPreviousIpMatches(ipHash, steam64) {
           AND ap.steam64 != $2
         ORDER BY ail.last_seen DESC
     `, [ipHash, steam64]);
+
+    return result.rows;
+}
+
+async function findSubnetBanEvasionMatches(data) {
+    if (!data.ip_subnet || !data.provider) return [];
+
+    const result = await pool.query(`
+        SELECT
+            ap.id AS player_id,
+            ap.steam64,
+            ap.cftools_id,
+            ap.beguid,
+            ap.last_name,
+            ail.ip_masked,
+            ail.ip_subnet,
+            ail.provider,
+            ail.country_code,
+            ail.country_name,
+            ail.first_seen,
+            ail.last_seen,
+            ail.seen_count,
+            ail.last_ban_seen,
+            ail.banned_player
+        FROM alt_ip_links ail
+        JOIN alt_players ap ON ap.id = ail.player_id
+        WHERE ail.ip_subnet = $1
+          AND LOWER(ail.provider) = LOWER($2)
+          AND ap.steam64 != $3
+          AND ail.banned_player = true
+          AND ail.last_ban_seen IS NOT NULL
+          AND ail.last_ban_seen >= NOW() - INTERVAL '3 hours'
+        ORDER BY ail.last_ban_seen DESC
+    `, [
+        data.ip_subnet,
+        data.provider,
+        data.steam64
+    ]);
 
     return result.rows;
 }
@@ -166,20 +280,35 @@ async function saveIpLink(playerId, ipHash, data) {
                 ip_masked = $1,
                 provider = $2,
                 country_code = $3,
-                country_name = $4
-            WHERE id = $5
+                country_name = $4,
+                ip_subnet = $5
+            WHERE id = $6
         `, [
             data.ip_masked,
             data.provider,
             data.country_code,
             data.country_name,
+            data.ip_subnet,
             existing.rows[0].id
         ]);
     } else {
         await pool.query(`
             INSERT INTO alt_ip_links
-            (player_id, ip_hash, server_id, first_seen, last_seen, seen_count, ip_masked, provider, country_code, country_name)
-            VALUES ($1, $2, $3, CURRENT_DATE, CURRENT_DATE, 1, $4, $5, $6, $7)
+            (
+                player_id,
+                ip_hash,
+                server_id,
+                first_seen,
+                last_seen,
+                seen_count,
+                ip_masked,
+                provider,
+                country_code,
+                country_name,
+                ip_subnet,
+                banned_player
+            )
+            VALUES ($1, $2, $3, CURRENT_DATE, CURRENT_DATE, 1, $4, $5, $6, $7, $8, false)
         `, [
             playerId,
             ipHash,
@@ -187,12 +316,13 @@ async function saveIpLink(playerId, ipHash, data) {
             data.ip_masked,
             data.provider,
             data.country_code,
-            data.country_name
+            data.country_name,
+            data.ip_subnet
         ]);
     }
 }
 
-async function altCaseExists(currentPlayerId, matchedPlayerId) {
+async function altCaseExists(currentPlayerId, matchedPlayerId, reason = "Shared IP") {
     const result = await pool.query(`
         SELECT id FROM alt_cases
         WHERE (
@@ -200,13 +330,14 @@ async function altCaseExists(currentPlayerId, matchedPlayerId) {
         ) OR (
             player_id = $2 AND matched_player_id = $1
         )
+        AND reason = $3
         LIMIT 1
-    `, [currentPlayerId, matchedPlayerId]);
+    `, [currentPlayerId, matchedPlayerId, reason]);
 
     return result.rows.length > 0;
 }
 
-async function createAltCase(currentPlayerId, matchedPlayerId) {
+async function createAltCase(currentPlayerId, matchedPlayerId, reason = "Shared IP", score = 90) {
     await pool.query(`
         INSERT INTO alt_cases
         (player_id, matched_player_id, score, reason, created_at)
@@ -214,9 +345,30 @@ async function createAltCase(currentPlayerId, matchedPlayerId) {
     `, [
         currentPlayerId,
         matchedPlayerId,
-        90,
-        "Shared IP"
+        score,
+        reason
     ]);
+}
+
+async function markPlayerBannedByCFToolsId(cftoolsId) {
+    const player = await pool.query(`
+        SELECT id FROM alt_players
+        WHERE cftools_id = $1
+        LIMIT 1
+    `, [cftoolsId]);
+
+    if (player.rows.length === 0) {
+        return false;
+    }
+
+    await pool.query(`
+        UPDATE alt_ip_links
+        SET banned_player = true,
+            last_ban_seen = NOW()
+        WHERE player_id = $1
+    `, [player.rows[0].id]);
+
+    return true;
 }
 
 function buildAltAlertEmbed(current, matched) {
@@ -261,6 +413,49 @@ function buildAltAlertEmbed(current, matched) {
         .setTimestamp();
 }
 
+function buildSubnetBanEvasionEmbed(current, matched) {
+    return new EmbedBuilder()
+        .setTitle("🟡 Possible Ban Evasion Pattern")
+        .setColor(0xffcc00)
+        .setDescription("**A player joined shortly after a banned account used a similar IP range and same provider.**")
+        .addFields(
+            {
+                name: "👤 Current Player",
+                value:
+                    `🎮 **Name:** ${playerLink(current.player_name, current.cftools_id)}\n` +
+                    `🆔 **CFTools:** ${idLink(current.cftools_id, current.cftools_id)}\n` +
+                    `🔗 **Steam64:** ${idLink(current.steam64, current.cftools_id)}\n` +
+                    `🌐 **IP Range:** \`${current.ip_subnet || current.ip_masked}\`\n` +
+                    `🏢 **Provider:** ${current.provider || "Unknown"}\n` +
+                    `📍 **Country:** ${current.country_name || current.country_code || "Unknown"}`,
+                inline: true
+            },
+            {
+                name: "🚫 Recently Banned Account",
+                value:
+                    `🎮 **Name:** ${playerLink(matched.last_name, matched.cftools_id)}\n` +
+                    `🆔 **CFTools:** ${idLink(matched.cftools_id, matched.cftools_id)}\n` +
+                    `🔗 **Steam64:** ${idLink(matched.steam64, matched.cftools_id)}\n` +
+                    `🌐 **Previous IP Range:** \`${matched.ip_subnet || matched.ip_masked}\`\n` +
+                    `🏢 **Provider:** ${matched.provider || "Unknown"}\n` +
+                    `📍 **Country:** ${matched.country_name || matched.country_code || "Unknown"}`,
+                inline: true
+            },
+            {
+                name: "📊 Match Details",
+                value:
+                    `⚠️ **Type:** Same provider + same /24 IP range\n` +
+                    `⏱️ **Ban Window:** Within ${BAN_EVASION_WINDOW_HOURS} hours\n` +
+                    `🔥 **Confidence:** MEDIUM / HIGH\n` +
+                    `🚫 **Ban Seen:** ${formatDateTime(matched.last_ban_seen)}\n` +
+                    `📈 **Previous IP Times Seen:** ${matched.seen_count || 1}`,
+                inline: false
+            }
+        )
+        .setFooter({ text: "GrevBot • Ban evasion pattern detection" })
+        .setTimestamp();
+}
+
 async function sendAltAlert(client, current, matched) {
     const channelId = process.env.ALT_ALERT_CHANNEL_ID || "1508534144286589132";
 
@@ -278,6 +473,23 @@ async function sendAltAlert(client, current, matched) {
     await channel.send({ embeds: [embed] });
 }
 
+async function sendSubnetBanEvasionAlert(client, current, matched) {
+    const channelId = process.env.ALT_ALERT_CHANNEL_ID || "1508534144286589132";
+
+    let channel;
+    try {
+        channel = await client.channels.fetch(channelId);
+    } catch (err) {
+        console.error("Subnet ban evasion channel fetch failed:", err);
+        return;
+    }
+
+    if (!channel) return;
+
+    const embed = buildSubnetBanEvasionEmbed(current, matched);
+    await channel.send({ embeds: [embed] });
+}
+
 async function sendTestAltAlert(client) {
     const channelId = process.env.ALT_ALERT_CHANNEL_ID || "1508534144286589132";
     const channel = await client.channels.fetch(channelId);
@@ -287,6 +499,7 @@ async function sendTestAltAlert(client) {
         cftools_id: "6489fd3e8eabcc78746ab6fd",
         steam64: "76561198000000001",
         ip_masked: "37.166.xxx.xxx",
+        ip_subnet: "37.166.44.xxx",
         provider: "Free Mobile SAS",
         country_name: "France"
     };
@@ -296,14 +509,16 @@ async function sendTestAltAlert(client) {
         cftools_id: "6489fd3e8eabcc78746ab111",
         steam64: "76561198000000099",
         ip_masked: "37.166.xxx.xxx",
+        ip_subnet: "37.166.44.xxx",
         provider: "Free Mobile SAS",
         country_name: "France",
         first_seen: "2026-05-25",
-        seen_count: 14
+        seen_count: 14,
+        last_ban_seen: new Date()
     };
 
-    const embed = buildAltAlertEmbed(current, matched);
-    await channel.send({ embeds: [embed] });
+    await channel.send({ embeds: [buildAltAlertEmbed(current, matched)] });
+    await channel.send({ embeds: [buildSubnetBanEvasionEmbed(current, matched)] });
 }
 
 async function manualAltCheck(cftoolsId) {
@@ -338,6 +553,7 @@ async function manualAltCheck(cftoolsId) {
             ap.beguid,
             ap.last_name,
             ail.ip_masked,
+            ail.ip_subnet,
             ail.provider,
             ail.country_code,
             ail.country_name,
@@ -440,6 +656,7 @@ async function syncAndDetect(client) {
     let found = 0;
     let saved = 0;
     let alerts = 0;
+    let subnetAlerts = 0;
     let skipped = 0;
 
     for (const p of players) {
@@ -460,6 +677,7 @@ async function syncAndDetect(client) {
             player_name: p?.gamedata?.player_name || p?.persona?.profile?.name || "Unknown",
             ip,
             ip_masked: maskIP(ip),
+            ip_subnet: subnetIP(ip),
             provider: p?.connection?.provider || "Unknown",
             country_code: p?.connection?.country_code || null,
             country_name: p?.connection?.country_names?.en || p?.connection?.country_code || "Unknown"
@@ -472,27 +690,39 @@ async function syncAndDetect(client) {
         }
 
         const previousMatches = await findPreviousIpMatches(ipHash, steam64);
+        const subnetMatches = await findSubnetBanEvasionMatches(current);
         const currentPlayerId = await getOrCreatePlayer(current);
 
         await saveIpLink(currentPlayerId, ipHash, current);
         saved++;
 
         for (const matched of previousMatches) {
-            const exists = await altCaseExists(currentPlayerId, matched.player_id);
+            const exists = await altCaseExists(currentPlayerId, matched.player_id, "Shared IP");
             if (exists) continue;
 
-            await createAltCase(currentPlayerId, matched.player_id);
+            await createAltCase(currentPlayerId, matched.player_id, "Shared IP", 90);
             await sendAltAlert(client, current, matched);
             alerts++;
         }
+
+        for (const matched of subnetMatches) {
+            const exists = await altCaseExists(currentPlayerId, matched.player_id, "Subnet ban evasion pattern");
+            if (exists) continue;
+
+            await createAltCase(currentPlayerId, matched.player_id, "Subnet ban evasion pattern", 70);
+            await sendSubnetBanEvasionAlert(client, current, matched);
+            subnetAlerts++;
+        }
     }
 
-    return { found, saved, alerts, skipped };
+    return { found, saved, alerts, subnetAlerts, skipped };
 }
 
 module.exports = {
     syncAndDetect,
     getCFToolsGSMList,
     sendTestAltAlert,
-    manualAltCheck
+    manualAltCheck,
+    markPlayerBannedByCFToolsId,
+    checkBanlistsForCftoolsId
 };
