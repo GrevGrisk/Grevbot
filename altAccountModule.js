@@ -23,10 +23,7 @@ function subnetIP(ip) {
 }
 
 function hashIP(ip) {
-    if (!process.env.IP_HASH_SECRET) {
-        console.error("Missing IP_HASH_SECRET environment variable");
-        return null;
-    }
+    if (!process.env.IP_HASH_SECRET) return null;
 
     return crypto
         .createHash("sha256")
@@ -35,9 +32,7 @@ function hashIP(ip) {
 }
 
 function cfProfileUrl(cftoolsId) {
-    return cftoolsId
-        ? `https://app.cftools.cloud/profile/${cftoolsId}`
-        : null;
+    return cftoolsId ? `https://app.cftools.cloud/profile/${cftoolsId}` : null;
 }
 
 function playerLink(name, cftoolsId) {
@@ -62,12 +57,35 @@ function formatDateTime(value) {
     return new Date(value).toISOString().replace("T", " ").split(".")[0] + " UTC";
 }
 
+function extractSteamCreated(p) {
+    return (
+        p?.persona?.profile?.created_at ||
+        p?.persona?.profile?.timecreated ||
+        p?.persona?.created_at ||
+        p?.profile?.created_at ||
+        null
+    );
+}
+
+function extractDayZHours(p) {
+    const seconds =
+        p?.info?.radar?.indicators?.playtime_total ||
+        p?.stats?.playtime ||
+        p?.playtime ||
+        0;
+
+    return Math.round((Number(seconds || 0) / 3600) * 10) / 10;
+}
+
+function extractPreviousBans(p) {
+    return Number(p?.info?.ban_count || 0);
+}
+
 function isRecentBan(steam64) {
     const ban = recentBansBySteam64.get(steam64);
     if (!ban) return false;
 
-    const ageMs = Date.now() - ban.timestamp;
-    return ageMs <= BAN_EVASION_WINDOW_HOURS * 60 * 60 * 1000;
+    return Date.now() - ban.timestamp <= BAN_EVASION_WINDOW_HOURS * 60 * 60 * 1000;
 }
 
 function getRecentBanInfo(steam64) {
@@ -76,8 +94,7 @@ function getRecentBanInfo(steam64) {
 
 function cleanupRecentBans() {
     for (const [steam64, ban] of recentBansBySteam64.entries()) {
-        const ageMs = Date.now() - ban.timestamp;
-        if (ageMs > BAN_EVASION_WINDOW_HOURS * 60 * 60 * 1000) {
+        if (Date.now() - ban.timestamp > BAN_EVASION_WINDOW_HOURS * 60 * 60 * 1000) {
             recentBansBySteam64.delete(steam64);
         }
     }
@@ -158,8 +175,7 @@ async function checkBanlistsForCftoolsId(cftoolsId) {
                 banlistId,
                 ok: true,
                 count: bans.length,
-                bans,
-                rawKeys: response.data && typeof response.data === "object" ? Object.keys(response.data) : []
+                bans
             });
         } catch (err) {
             results.push({
@@ -177,11 +193,7 @@ async function checkBanlistsForCftoolsId(cftoolsId) {
         await markPlayerBannedByCFToolsId(cftoolsId);
     }
 
-    return {
-        cftoolsId,
-        totalBans,
-        results
-    };
+    return { cftoolsId, totalBans, results };
 }
 
 function parseBanExecutedMessage(content) {
@@ -232,6 +244,9 @@ async function getOrCreatePlayer(player) {
     const cftoolsId = player.cftools_id || null;
     const beguid = player.beguid || null;
     const name = player.player_name || null;
+    const steamCreated = player.steam_created || null;
+    const dayzHours = player.dayz_hours || 0;
+    const previousBans = player.previous_bans || 0;
 
     const existing = await pool.query(`
         SELECT id FROM alt_players
@@ -244,19 +259,38 @@ async function getOrCreatePlayer(player) {
             UPDATE alt_players
             SET cftools_id = $1,
                 beguid = $2,
-                last_name = $3
-            WHERE id = $4
-        `, [cftoolsId, beguid, name, existing.rows[0].id]);
+                last_name = $3,
+                steam_created = $4,
+                dayz_hours = $5,
+                previous_bans = $6
+            WHERE id = $7
+        `, [
+            cftoolsId,
+            beguid,
+            name,
+            steamCreated,
+            dayzHours,
+            previousBans,
+            existing.rows[0].id
+        ]);
 
         return existing.rows[0].id;
     }
 
     const created = await pool.query(`
         INSERT INTO alt_players
-        (steam64, cftools_id, beguid, last_name, created_at)
-        VALUES ($1, $2, $3, $4, CURRENT_DATE)
+        (steam64, cftools_id, beguid, last_name, created_at, steam_created, dayz_hours, previous_bans)
+        VALUES ($1, $2, $3, $4, CURRENT_DATE, $5, $6, $7)
         RETURNING id
-    `, [steam64, cftoolsId, beguid, name]);
+    `, [
+        steam64,
+        cftoolsId,
+        beguid,
+        name,
+        steamCreated,
+        dayzHours,
+        previousBans
+    ]);
 
     return created.rows[0].id;
 }
@@ -423,9 +457,7 @@ async function markPlayerBannedByCFToolsId(cftoolsId) {
         LIMIT 1
     `, [cftoolsId]);
 
-    if (player.rows.length === 0) {
-        return false;
-    }
+    if (player.rows.length === 0) return false;
 
     recentBansBySteam64.set(player.rows[0].steam64, {
         timestamp: Date.now(),
@@ -561,36 +593,14 @@ function buildSubnetBanEvasionEmbed(current, matched) {
 
 async function sendAltAlert(client, current, matched) {
     const channelId = process.env.ALT_ALERT_CHANNEL_ID || "1508534144286589132";
-
-    let channel;
-    try {
-        channel = await client.channels.fetch(channelId);
-    } catch (err) {
-        console.error("Alt alert channel fetch failed:", err);
-        return;
-    }
-
-    if (!channel) return;
-
-    const embed = buildAltAlertEmbed(current, matched);
-    await channel.send({ embeds: [embed] });
+    const channel = await client.channels.fetch(channelId);
+    await channel.send({ embeds: [buildAltAlertEmbed(current, matched)] });
 }
 
 async function sendSubnetBanEvasionAlert(client, current, matched) {
     const channelId = process.env.ALT_ALERT_CHANNEL_ID || "1508534144286589132";
-
-    let channel;
-    try {
-        channel = await client.channels.fetch(channelId);
-    } catch (err) {
-        console.error("Subnet ban evasion channel fetch failed:", err);
-        return;
-    }
-
-    if (!channel) return;
-
-    const embed = buildSubnetBanEvasionEmbed(current, matched);
-    await channel.send({ embeds: [embed] });
+    const channel = await client.channels.fetch(channelId);
+    await channel.send({ embeds: [buildSubnetBanEvasionEmbed(current, matched)] });
 }
 
 async function sendTestAltAlert(client) {
@@ -705,30 +715,16 @@ async function manualAltCheck(cftoolsId) {
         .setTitle("🚨 GrevBot Manual Alt Check")
         .setColor(0xff0000)
         .setDescription("Possible alt accounts found through shared IP history.")
-        .addFields(
-            {
-                name: "👤 Checked Player",
-                value:
-                    `🎮 **Name:** ${playerLink(player.last_name, player.cftools_id)}\n` +
-                    `🆔 **CFTools:** ${idLink(player.cftools_id, player.cftools_id)}\n` +
-                    `🔗 **Steam64:** ${idLink(player.steam64, player.cftools_id)}`,
-                inline: false
-            },
-            {
-                name: "📊 Match Summary",
-                value:
-                    `⚠️ **Type:** Shared IP\n` +
-                    `🔥 **Confidence:** HIGH\n` +
-                    `📈 **Matches Found:** ${matches.length}`,
-                inline: false
-            }
-        )
-        .setFooter({ text: "GrevBot • Manual alt check" })
-        .setTimestamp();
+        .addFields({
+            name: "👤 Checked Player",
+            value:
+                `🎮 **Name:** ${playerLink(player.last_name, player.cftools_id)}\n` +
+                `🆔 **CFTools:** ${idLink(player.cftools_id, player.cftools_id)}\n` +
+                `🔗 **Steam64:** ${idLink(player.steam64, player.cftools_id)}`,
+            inline: false
+        });
 
-    const limitedMatches = matches.slice(0, 10);
-
-    for (const match of limitedMatches) {
+    for (const match of matches.slice(0, 10)) {
         embed.addFields({
             name: `🕵️ ${match.last_name || "Unknown"}`,
             value:
@@ -744,18 +740,7 @@ async function manualAltCheck(cftoolsId) {
         });
     }
 
-    if (matches.length > 10) {
-        embed.addFields({
-            name: "➕ More Matches",
-            value: `${matches.length - 10} additional matches hidden.`,
-            inline: false
-        });
-    }
-
-    return {
-        found: true,
-        embeds: [embed]
-    };
+    return { found: true, embeds: [embed] };
 }
 
 async function syncAndDetect(client) {
@@ -784,6 +769,9 @@ async function syncAndDetect(client) {
             cftools_id: p?.cftools_id || null,
             beguid: p?.gamedata?.beguid || p?.gamedata?.be_guid || null,
             player_name: p?.gamedata?.player_name || p?.persona?.profile?.name || "Unknown",
+            steam_created: extractSteamCreated(p),
+            dayz_hours: extractDayZHours(p),
+            previous_bans: extractPreviousBans(p),
             ip,
             ip_masked: maskIP(ip),
             ip_subnet: subnetIP(ip),
