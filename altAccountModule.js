@@ -1,22 +1,12 @@
 const crypto = require("crypto");
 const axios = require("axios");
-const {
-    EmbedBuilder,
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle
-} = require("discord.js");
+const { EmbedBuilder } = require("discord.js");
 const pool = require("./db");
 
 const CF_BASE = "https://data.cftools.cloud";
-const STEAM_API_BASE = "https://api.steampowered.com";
 const BAN_EVASION_WINDOW_HOURS = 3;
-const FRESH_STEAM_ACCOUNT_DAYS = 30;
-const LOW_DAYZ_HOURS = Number(process.env.PLAYER_INTEL_LOW_HOURS || 50);
-const RISK_ALERT_SCORE = Number(process.env.PLAYER_INTEL_RISK_SCORE || 70);
 
 const recentBansBySteam64 = new Map();
-const mutedPlayerIntelAlerts = new Set();
 
 function maskIP(ip) {
     if (!ip) return "Unknown";
@@ -30,45 +20,6 @@ function subnetIP(ip) {
     const parts = ip.split(".");
     if (parts.length !== 4) return null;
     return `${parts[0]}.${parts[1]}.${parts[2]}.xxx`;
-}
-
-function normalizeDateValue(value) {
-    if (!value) return null;
-
-    if (typeof value === "number" || /^\d+$/.test(String(value))) {
-        const numeric = Number(value);
-        const ms = numeric > 9999999999 ? numeric : numeric * 1000;
-        const date = new Date(ms);
-        return Number.isNaN(date.getTime()) ? null : date.toISOString();
-    }
-
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
-async function getSteamAccountCreated(steam64) {
-    if (!steam64 || !process.env.STEAM_API_KEY) return null;
-
-    try {
-        const response = await axios.get(
-            `${STEAM_API_BASE}/ISteamUser/GetPlayerSummaries/v2/`,
-            {
-                params: {
-                    key: process.env.STEAM_API_KEY,
-                    steamids: steam64
-                }
-            }
-        );
-
-        const player = response.data?.response?.players?.[0];
-
-        return player?.timecreated
-            ? new Date(Number(player.timecreated) * 1000).toISOString()
-            : null;
-    } catch (err) {
-        console.error("Steam API timecreated fetch error:", err.response?.data || err.message || err);
-        return null;
-    }
 }
 
 function hashIP(ip) {
@@ -103,9 +54,7 @@ function idLink(id, cftoolsId) {
 
 function formatDate(value) {
     if (!value) return "Unknown";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "Unknown";
-    return date.toISOString().split("T")[0];
+    return new Date(value).toISOString().split("T")[0];
 }
 
 function formatDateTime(value) {
@@ -113,77 +62,6 @@ function formatDateTime(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "Unknown";
     return date.toISOString().replace("T", " ").split(".")[0] + " UTC";
-}
-
-function daysSince(value) {
-    if (!value) return null;
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return null;
-    return Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
-}
-
-function extractSteamCreated(player) {
-    return normalizeDateValue(
-        player?.persona?.profile?.timecreated ||
-        player?.profile?.timecreated ||
-        player?.steam_created ||
-        player?.steam_timecreated ||
-        player?.steam?.timecreated ||
-        player?.persona?.steam?.timecreated ||
-        player?.persona?.profile?.steam_created ||
-        player?.persona?.profile?.steam_timecreated ||
-        player?.data?.persona?.profile?.timecreated ||
-        player?.data?.profile?.timecreated ||
-        player?.data?.steam?.timecreated ||
-        player?.player?.persona?.profile?.timecreated ||
-        player?.player?.profile?.timecreated ||
-        player?.player?.steam?.timecreated ||
-        null
-    );
-}
-
-function extractDayZHours(player) {
-    const seconds =
-        player?.info?.radar?.indicators?.playtime_total ||
-        player?.radar?.indicators?.playtime_total ||
-        player?.stats?.playtime ||
-        player?.playtime ||
-        player?.data?.playtime ||
-        player?.player?.playtime ||
-        0;
-
-    return Math.round((Number(seconds || 0) / 3600) * 10) / 10;
-}
-
-function extractPreviousBans(player) {
-    return Number(
-        player?.info?.ban_count ||
-        player?.ban_count ||
-        player?.data?.info?.ban_count ||
-        player?.player?.info?.ban_count ||
-        0
-    );
-}
-
-function isRecentBan(steam64) {
-    const ban = recentBansBySteam64.get(steam64);
-    if (!ban) return false;
-
-    const ageMs = Date.now() - ban.timestamp;
-    return ageMs <= BAN_EVASION_WINDOW_HOURS * 60 * 60 * 1000;
-}
-
-function getRecentBanInfo(steam64) {
-    return recentBansBySteam64.get(steam64) || null;
-}
-
-function cleanupRecentBans() {
-    for (const [steam64, ban] of recentBansBySteam64.entries()) {
-        const ageMs = Date.now() - ban.timestamp;
-        if (ageMs > BAN_EVASION_WINDOW_HOURS * 60 * 60 * 1000) {
-            recentBansBySteam64.delete(steam64);
-        }
-    }
 }
 
 async function getCFToolsToken() {
@@ -223,68 +101,6 @@ function normalizePlayers(list) {
     return Array.isArray(list)
         ? list
         : (list.sessions || list.players || list.data || []);
-}
-
-function normalizeBanResponse(data) {
-    if (Array.isArray(data)) return data;
-    return data?.bans || data?.data || data?.entries || data?.results || [];
-}
-
-async function checkBanlistsForCftoolsId(cftoolsId) {
-    const token = await getCFToolsToken();
-
-    const banlists = [
-        process.env.CFTOOLS_BANLIST_ID_1,
-        process.env.CFTOOLS_BANLIST_ID_2
-    ].filter(Boolean);
-
-    const results = [];
-
-    for (const banlistId of banlists) {
-        try {
-            const response = await axios.get(
-                `${CF_BASE}/v1/banlist/${banlistId}/bans`,
-                {
-                    headers: {
-                        "User-Agent": process.env.CFTOOLS_APP_ID,
-                        "Authorization": `Bearer ${token}`
-                    },
-                    params: {
-                        filter: cftoolsId
-                    }
-                }
-            );
-
-            const bans = normalizeBanResponse(response.data);
-
-            results.push({
-                banlistId,
-                ok: true,
-                count: bans.length,
-                bans,
-                rawKeys: response.data && typeof response.data === "object" ? Object.keys(response.data) : []
-            });
-        } catch (err) {
-            results.push({
-                banlistId,
-                ok: false,
-                count: 0,
-                error: err.response?.data || err.message || err
-            });
-        }
-    }
-
-    const totalBans = results.reduce((sum, item) => sum + item.count, 0);
-
-    if (totalBans > 0) {
-        await markPlayerBannedByCFToolsId(cftoolsId);
-    }
-
-    return {
-        cftoolsId,
-        totalBans,
-        results
-    };
 }
 
 function parseBanExecutedMessage(content) {
@@ -335,9 +151,6 @@ async function getOrCreatePlayer(player) {
     const cftoolsId = player.cftools_id || null;
     const beguid = player.beguid || null;
     const name = player.player_name || null;
-    const steamCreated = player.steam_created || null;
-    const dayzHours = player.dayz_hours || 0;
-    const previousBans = player.previous_bans || 0;
 
     const existing = await pool.query(`
         SELECT id FROM alt_players
@@ -350,38 +163,19 @@ async function getOrCreatePlayer(player) {
             UPDATE alt_players
             SET cftools_id = $1,
                 beguid = $2,
-                last_name = $3,
-                steam_created = COALESCE($4, steam_created),
-                dayz_hours = $5,
-                previous_bans = $6
-            WHERE id = $7
-        `, [
-            cftoolsId,
-            beguid,
-            name,
-            steamCreated,
-            dayzHours,
-            previousBans,
-            existing.rows[0].id
-        ]);
+                last_name = $3
+            WHERE id = $4
+        `, [cftoolsId, beguid, name, existing.rows[0].id]);
 
         return existing.rows[0].id;
     }
 
     const created = await pool.query(`
         INSERT INTO alt_players
-        (steam64, cftools_id, beguid, last_name, created_at, steam_created, dayz_hours, previous_bans)
-        VALUES ($1, $2, $3, $4, CURRENT_DATE, $5, $6, $7)
+        (steam64, cftools_id, beguid, last_name, created_at)
+        VALUES ($1, $2, $3, $4, CURRENT_DATE)
         RETURNING id
-    `, [
-        steam64,
-        cftoolsId,
-        beguid,
-        name,
-        steamCreated,
-        dayzHours,
-        previousBans
-    ]);
+    `, [steam64, cftoolsId, beguid, name]);
 
     return created.rows[0].id;
 }
@@ -410,44 +204,6 @@ async function findPreviousIpMatches(ipHash, steam64) {
     `, [ipHash, steam64]);
 
     return result.rows;
-}
-
-async function findSubnetBanEvasionMatches(data) {
-    if (!data.ip_subnet || !data.provider) return [];
-
-    cleanupRecentBans();
-
-    const result = await pool.query(`
-        SELECT
-            ap.id AS player_id,
-            ap.steam64,
-            ap.cftools_id,
-            ap.beguid,
-            ap.last_name,
-            ail.ip_masked,
-            ail.ip_subnet,
-            ail.provider,
-            ail.country_code,
-            ail.country_name,
-            ail.first_seen,
-            ail.last_seen,
-            ail.seen_count,
-            ail.last_ban_seen,
-            ail.banned_player
-        FROM alt_ip_links ail
-        JOIN alt_players ap ON ap.id = ail.player_id
-        WHERE ail.ip_subnet = $1
-          AND LOWER(ail.provider) = LOWER($2)
-          AND ap.steam64 != $3
-          AND ail.banned_player = true
-        ORDER BY ail.last_seen DESC
-    `, [
-        data.ip_subnet,
-        data.provider,
-        data.steam64
-    ]);
-
-    return result.rows.filter(row => isRecentBan(row.steam64));
 }
 
 async function saveIpLink(playerId, ipHash, data) {
@@ -541,33 +297,6 @@ async function createAltCase(currentPlayerId, matchedPlayerId, reason = "Shared 
     ]);
 }
 
-async function markPlayerBannedByCFToolsId(cftoolsId) {
-    const player = await pool.query(`
-        SELECT id, steam64 FROM alt_players
-        WHERE cftools_id = $1
-        LIMIT 1
-    `, [cftoolsId]);
-
-    if (player.rows.length === 0) {
-        return false;
-    }
-
-    recentBansBySteam64.set(player.rows[0].steam64, {
-        timestamp: Date.now(),
-        reason: "Banlist match",
-        name: null
-    });
-
-    await pool.query(`
-        UPDATE alt_ip_links
-        SET banned_player = true,
-            last_ban_seen = CURRENT_DATE
-        WHERE player_id = $1
-    `, [player.rows[0].id]);
-
-    return true;
-}
-
 async function markPlayerBannedBySteam64(steam64, banData = {}) {
     const player = await pool.query(`
         SELECT id FROM alt_players
@@ -596,186 +325,63 @@ async function markPlayerBannedBySteam64(steam64, banData = {}) {
     return true;
 }
 
-function calculateRisk(current) {
-    const accountAgeDays = daysSince(current.steam_created);
-    let score = 0;
-    const reasons = [];
+function isRecentBan(steam64) {
+    const ban = recentBansBySteam64.get(steam64);
+    if (!ban) return false;
 
-    if (current.previous_bans > 0) {
-        score += Math.min(50, current.previous_bans * 25);
-        reasons.push(`Previous bans: ${current.previous_bans}`);
-    }
-
-    if (current.dayz_hours > 0 && current.dayz_hours < LOW_DAYZ_HOURS) {
-        score += 25;
-        reasons.push(`Low DayZ hours: ${current.dayz_hours}`);
-    }
-
-    if (accountAgeDays !== null && accountAgeDays >= 0 && accountAgeDays < FRESH_STEAM_ACCOUNT_DAYS) {
-        score += 35;
-        reasons.push(`Fresh Steam account: ${accountAgeDays} days old`);
-    }
-
-    if (current.provider && /vpn|proxy|hosting|datacenter|m247|ovh|digitalocean|hetzner|leaseweb/i.test(current.provider)) {
-        score += 15;
-        reasons.push(`Suspicious provider: ${current.provider}`);
-    }
-
-    return {
-        score: Math.min(score, 100),
-        reasons,
-        accountAgeDays
-    };
+    const ageMs = Date.now() - ban.timestamp;
+    return ageMs <= BAN_EVASION_WINDOW_HOURS * 60 * 60 * 1000;
 }
 
-function shouldSendPlayerIntelAlert(type, steam64) {
-    return !mutedPlayerIntelAlerts.has(`${type}:${steam64}`);
+function getRecentBanInfo(steam64) {
+    return recentBansBySteam64.get(steam64) || null;
 }
 
-function playerIntelButtons(type, steam64, muted = false) {
-    return [
-        new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId(`playerintel_${muted ? "reactivate" : "deactivate"}_${type}_${steam64}`)
-                .setLabel(muted ? "Reactivate Alert" : "Deactivate Alert")
-                .setStyle(muted ? ButtonStyle.Success : ButtonStyle.Danger)
-        )
-    ];
+function cleanupRecentBans() {
+    for (const [steam64, ban] of recentBansBySteam64.entries()) {
+        const ageMs = Date.now() - ban.timestamp;
+        if (ageMs > BAN_EVASION_WINDOW_HOURS * 60 * 60 * 1000) {
+            recentBansBySteam64.delete(steam64);
+        }
+    }
 }
 
-function buildPlayerIntelEmbed(type, current, risk = null) {
-    const titles = {
-        previous_bans: "🚫 Player Intel: Previous Bans",
-        low_hours: "⏱️ Player Intel: Low DayZ Hours",
-        fresh_account: "🆕 Player Intel: Fresh Steam Account",
-        risk_analysis: "⚠️ Player Intel: Risk Analysis"
-    };
+async function findSubnetBanEvasionMatches(data) {
+    if (!data.ip_subnet || !data.provider) return [];
 
-    const colors = {
-        previous_bans: 0xff0000,
-        low_hours: 0xff9900,
-        fresh_account: 0xffcc00,
-        risk_analysis: 0xff0000
-    };
+    cleanupRecentBans();
 
-    const accountAgeDays = daysSince(current.steam_created);
+    const result = await pool.query(`
+        SELECT
+            ap.id AS player_id,
+            ap.steam64,
+            ap.cftools_id,
+            ap.beguid,
+            ap.last_name,
+            ail.ip_masked,
+            ail.ip_subnet,
+            ail.provider,
+            ail.country_code,
+            ail.country_name,
+            ail.first_seen,
+            ail.last_seen,
+            ail.seen_count,
+            ail.last_ban_seen,
+            ail.banned_player
+        FROM alt_ip_links ail
+        JOIN alt_players ap ON ap.id = ail.player_id
+        WHERE ail.ip_subnet = $1
+          AND LOWER(ail.provider) = LOWER($2)
+          AND ap.steam64 != $3
+          AND ail.banned_player = true
+        ORDER BY ail.last_seen DESC
+    `, [
+        data.ip_subnet,
+        data.provider,
+        data.steam64
+    ]);
 
-    const embed = new EmbedBuilder()
-        .setTitle(titles[type] || "⚠️ Player Intel Alert")
-        .setColor(colors[type] || 0xff9900)
-        .setDescription(`Player Intel triggered for ${playerLink(current.player_name, current.cftools_id)}.`)
-        .addFields(
-            {
-                name: "👤 Player",
-                value:
-                    `🎮 **Name:** ${playerLink(current.player_name, current.cftools_id)}\n` +
-                    `🆔 **CFTools:** ${idLink(current.cftools_id, current.cftools_id)}\n` +
-                    `🔗 **Steam64:** ${idLink(current.steam64, current.cftools_id)}\n` +
-                    `🌐 **IP:** \`${current.ip_masked || "Hidden"}\`\n` +
-                    `🏢 **Provider:** ${current.provider || "Unknown"}\n` +
-                    `📍 **Country:** ${current.country_name || current.country_code || "Unknown"}`,
-                inline: false
-            },
-            {
-                name: "🧠 Intel",
-                value:
-                    `📅 **Steam account created:** ${formatDate(current.steam_created)}${accountAgeDays !== null ? ` (${accountAgeDays} days old)` : ""}\n` +
-                    `⏱️ **DayZ hours:** ${current.dayz_hours ?? 0}\n` +
-                    `🚫 **Previous bans:** ${current.previous_bans ?? 0}`,
-                inline: false
-            }
-        )
-        .setFooter({ text: "GrevBot • Player Intel" })
-        .setTimestamp();
-
-    if (type === "risk_analysis" && risk) {
-        embed.addFields({
-            name: "📊 Risk Analysis",
-            value:
-                `🔥 **Risk Score:** ${risk.score}/100\n` +
-                `⚠️ **Reasons:** ${risk.reasons.length ? risk.reasons.join(" | ") : "None"}`,
-            inline: false
-        });
-    }
-
-    return embed;
-}
-
-async function sendPlayerIntelAlert(client, type, current, risk = null) {
-    if (!shouldSendPlayerIntelAlert(type, current.steam64)) return false;
-
-    const channelId = process.env.PLAYER_INTEL_ALERT_CHANNEL_ID || process.env.PLAYER_INTEL_CHANNEL_ID || process.env.ALT_ALERT_CHANNEL_ID || "1508534144286589132";
-
-    let channel;
-    try {
-        channel = await client.channels.fetch(channelId);
-    } catch (err) {
-        console.error("Player Intel alert channel fetch failed:", err);
-        return false;
-    }
-
-    if (!channel) return false;
-
-    await channel.send({
-        embeds: [buildPlayerIntelEmbed(type, current, risk)],
-        components: playerIntelButtons(type, current.steam64, false)
-    });
-
-    return true;
-}
-
-async function sendPlayerIntelAlerts(client, current) {
-    let sent = 0;
-    const risk = calculateRisk(current);
-
-    if (current.previous_bans > 0) {
-        if (await sendPlayerIntelAlert(client, "previous_bans", current, risk)) sent++;
-    }
-
-    if (current.dayz_hours > 0 && current.dayz_hours < LOW_DAYZ_HOURS) {
-        if (await sendPlayerIntelAlert(client, "low_hours", current, risk)) sent++;
-    }
-
-    if (risk.accountAgeDays !== null && risk.accountAgeDays >= 0 && risk.accountAgeDays < FRESH_STEAM_ACCOUNT_DAYS) {
-        if (await sendPlayerIntelAlert(client, "fresh_account", current, risk)) sent++;
-    }
-
-    if (risk.score >= RISK_ALERT_SCORE) {
-        if (await sendPlayerIntelAlert(client, "risk_analysis", current, risk)) sent++;
-    }
-
-    return sent;
-}
-
-async function handlePlayerIntelButton(interaction) {
-    if (!interaction.isButton?.()) return false;
-    if (!interaction.customId?.startsWith("playerintel_")) return false;
-
-    const parts = interaction.customId.split("_");
-    const action = parts[1];
-    const steam64 = parts.pop();
-    const type = parts.slice(2).join("_");
-    const key = `${type}:${steam64}`;
-
-    if (action === "deactivate") {
-        mutedPlayerIntelAlerts.add(key);
-
-        await interaction.update({
-            components: playerIntelButtons(type, steam64, true)
-        });
-        return true;
-    }
-
-    if (action === "reactivate") {
-        mutedPlayerIntelAlerts.delete(key);
-
-        await interaction.update({
-            components: playerIntelButtons(type, steam64, false)
-        });
-        return true;
-    }
-
-    return false;
+    return result.rows.filter(row => isRecentBan(row.steam64));
 }
 
 function buildAltAlertEmbed(current, matched) {
@@ -908,11 +514,7 @@ async function sendTestAltAlert(client) {
         player_name: "BillyBOB",
         cftools_id: "6489fd3e8eabcc78746ab6fd",
         steam64: "76561198000000001",
-        steam_created: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-        dayz_hours: 12,
-        previous_bans: 1,
         ip_masked: "37.166.xxx.xxx",
-        ip_subnet: "37.166.44.xxx",
         provider: "Free Mobile SAS",
         country_name: "France"
     };
@@ -922,23 +524,14 @@ async function sendTestAltAlert(client) {
         cftools_id: "6489fd3e8eabcc78746ab111",
         steam64: "76561198000000099",
         ip_masked: "37.166.xxx.xxx",
-        ip_subnet: "37.166.44.xxx",
         provider: "Free Mobile SAS",
         country_name: "France",
         first_seen: "2026-05-25",
-        seen_count: 14,
-        last_ban_seen: new Date()
+        seen_count: 14
     };
 
-    recentBansBySteam64.set(matched.steam64, {
-        timestamp: Date.now(),
-        reason: "Cheater - BE ban",
-        name: "SneakyAlt"
-    });
-
-    await channel.send({ embeds: [buildAltAlertEmbed(current, matched)] });
-    await channel.send({ embeds: [buildSubnetBanEvasionEmbed(current, matched)] });
-    await sendPlayerIntelAlerts(client, current);
+    const embed = buildAltAlertEmbed(current, matched);
+    await channel.send({ embeds: [embed] });
 }
 
 async function manualAltCheck(cftoolsId) {
@@ -1077,7 +670,6 @@ async function syncAndDetect(client) {
     let saved = 0;
     let alerts = 0;
     let subnetAlerts = 0;
-    let playerIntelAlerts = 0;
     let skipped = 0;
 
     for (const p of players) {
@@ -1096,9 +688,6 @@ async function syncAndDetect(client) {
             cftools_id: p?.cftools_id || null,
             beguid: p?.gamedata?.beguid || p?.gamedata?.be_guid || null,
             player_name: p?.gamedata?.player_name || p?.persona?.profile?.name || "Unknown",
-            steam_created: extractSteamCreated(p) || await getSteamAccountCreated(steam64),
-            dayz_hours: extractDayZHours(p),
-            previous_bans: extractPreviousBans(p),
             ip,
             ip_masked: maskIP(ip),
             ip_subnet: subnetIP(ip),
@@ -1120,8 +709,6 @@ async function syncAndDetect(client) {
         await saveIpLink(currentPlayerId, ipHash, current);
         saved++;
 
-        playerIntelAlerts += await sendPlayerIntelAlerts(client, current);
-
         for (const matched of previousMatches) {
             const exists = await altCaseExists(currentPlayerId, matched.player_id, "Shared IP");
             if (exists) continue;
@@ -1141,7 +728,7 @@ async function syncAndDetect(client) {
         }
     }
 
-    return { found, saved, alerts, subnetAlerts, playerIntelAlerts, skipped };
+    return { found, saved, alerts, subnetAlerts, skipped };
 }
 
 module.exports = {
@@ -1149,9 +736,6 @@ module.exports = {
     getCFToolsGSMList,
     sendTestAltAlert,
     manualAltCheck,
-    markPlayerBannedByCFToolsId,
-    markPlayerBannedBySteam64,
-    checkBanlistsForCftoolsId,
     handleBanWebhookMessage,
-    handlePlayerIntelButton
+    markPlayerBannedBySteam64
 };
