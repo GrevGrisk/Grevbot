@@ -160,66 +160,48 @@ async function getAltPlayerByCfid(cfid) {
     }
 }
 
-function findSteamCreatedValue(obj, depth = 0) {
-    if (!obj || typeof obj !== "object" || depth > 6) return null;
-
-    const directKeys = [
-        "timecreated",
-        "created_at",
-        "created",
-        "steam_created",
-        "steam_timecreated",
-        "creation_date",
-        "createdAt"
-    ];
-
-    for (const key of directKeys) {
-        if (obj[key] !== undefined && obj[key] !== null && obj[key] !== "") {
-            return obj[key];
-        }
-    }
-
-    for (const value of Object.values(obj)) {
-        const found = findSteamCreatedValue(value, depth + 1);
-        if (found) return found;
-    }
-
-    return null;
-}
-
 function extractSteamCreated(serverPlayer, userLookup) {
-    const paths = [
-        "persona.profile.created_at",
-        "persona.profile.timecreated",
-        "persona.created_at",
-        "profile.created_at",
-        "profile.timecreated",
-        "steam.created_at",
-        "steam.timecreated",
-        "persona.steam.created_at",
-        "persona.steam.timecreated",
-        "persona.profile.steam_created",
-        "persona.profile.steam_timecreated",
-        "data.persona.profile.created_at",
-        "data.persona.profile.timecreated",
-        "data.profile.created_at",
-        "data.profile.timecreated",
-        "data.steam.created_at",
-        "data.steam.timecreated",
-        "player.persona.profile.created_at",
-        "player.persona.profile.timecreated",
-        "player.profile.created_at",
-        "player.profile.timecreated",
-        "created_at",
-        "created",
-        "steam_created"
-    ];
-
     return normalizeDateValue(
-        getNestedValue(serverPlayer, paths) ||
-        getNestedValue(userLookup, paths) ||
-        findSteamCreatedValue(serverPlayer) ||
-        findSteamCreatedValue(userLookup) ||
+        getNestedValue(serverPlayer, [
+            "persona.profile.timecreated",
+            "profile.timecreated",
+            "steam_created",
+            "steam_timecreated",
+            "steam.timecreated",
+            "steam.created_at",
+            "persona.steam.timecreated",
+            "persona.steam.created_at",
+            "persona.profile.steam_created",
+            "persona.profile.steam_timecreated",
+            "data.persona.profile.timecreated",
+            "data.profile.timecreated",
+            "data.steam.timecreated",
+            "data.steam.created_at",
+            "player.persona.profile.timecreated",
+            "player.profile.timecreated",
+            "player.steam.timecreated",
+            "player.steam.created_at"
+        ]) ||
+        getNestedValue(userLookup, [
+            "persona.profile.timecreated",
+            "profile.timecreated",
+            "steam_created",
+            "steam_timecreated",
+            "steam.timecreated",
+            "steam.created_at",
+            "persona.steam.timecreated",
+            "persona.steam.created_at",
+            "persona.profile.steam_created",
+            "persona.profile.steam_timecreated",
+            "data.persona.profile.timecreated",
+            "data.profile.timecreated",
+            "data.steam.timecreated",
+            "data.steam.created_at",
+            "player.persona.profile.timecreated",
+            "player.profile.timecreated",
+            "player.steam.timecreated",
+            "player.steam.created_at"
+        ]) ||
         null
     );
 }
