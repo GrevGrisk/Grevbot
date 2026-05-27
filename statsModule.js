@@ -5,6 +5,9 @@ const statsAlert = require("./statsAlertModule");
 
 const CF_BASE = "https://data.cftools.cloud";
 
+let cachedToken = null;
+let cachedTokenExpires = 0;
+
 // ===== HELPERS =====
 
 function extractCFID(link) {
@@ -32,7 +35,28 @@ function formatDate(value) {
     return date.toISOString().split("T")[0];
 }
 
+function getNestedValue(obj, paths) {
+    for (const path of paths) {
+        const value = path.split(".").reduce((acc, key) => {
+            if (acc && Object.prototype.hasOwnProperty.call(acc, key)) {
+                return acc[key];
+            }
+            return undefined;
+        }, obj);
+
+        if (value !== undefined && value !== null && value !== "") {
+            return value;
+        }
+    }
+
+    return null;
+}
+
 async function getCFToken() {
+    if (cachedToken && Date.now() < cachedTokenExpires) {
+        return cachedToken;
+    }
+
     const response = await axios.post(
         `${CF_BASE}/v1/auth/register`,
         {
@@ -46,15 +70,18 @@ async function getCFToken() {
         }
     );
 
-    return response.data.token;
+    cachedToken = response.data.token;
+    cachedTokenExpires = Date.now() + (23 * 60 * 60 * 1000);
+
+    return cachedToken;
 }
 
-async function getCFProfile(cfid) {
+async function getCFServerPlayer(cfid) {
     try {
         const token = await getCFToken();
 
         const response = await axios.get(
-            `${CF_BASE}/v1/player`,
+            `${CF_BASE}/v2/server/${process.env.CFTOOLS_SERVER_API_ID}/player`,
             {
                 headers: {
                     "User-Agent": process.env.CFTOOLS_APP_ID,
@@ -68,9 +95,101 @@ async function getCFProfile(cfid) {
 
         return response.data;
     } catch (err) {
-        console.error("CF profile fetch error:", err.response?.data || err.message || err);
+        console.error("CF server player fetch error:", err.response?.data || err.message || err);
         return null;
     }
+}
+
+async function getCFUserLookup(identifier) {
+    if (!identifier) return null;
+
+    try {
+        const token = await getCFToken();
+
+        const response = await axios.get(
+            `${CF_BASE}/v1/users/lookup`,
+            {
+                headers: {
+                    "User-Agent": process.env.CFTOOLS_APP_ID,
+                    "Authorization": `Bearer ${token}`
+                },
+                params: {
+                    identifier
+                }
+            }
+        );
+
+        return response.data;
+    } catch (err) {
+        console.error("CF user lookup error:", err.response?.data || err.message || err);
+        return null;
+    }
+}
+
+async function getAltPlayerByCfid(cfid) {
+    try {
+        const result = await pool.query(`
+            SELECT steam64, cftools_id, last_name
+            FROM alt_players
+            WHERE cftools_id = $1
+            LIMIT 1
+        `, [cfid]);
+
+        return result.rows[0] || null;
+    } catch (err) {
+        console.error("Alt player lookup error:", err);
+        return null;
+    }
+}
+
+function extractSteamCreated(serverPlayer, userLookup) {
+    return getNestedValue(serverPlayer, [
+        "persona.profile.created_at",
+        "persona.profile.timecreated",
+        "persona.created_at",
+        "profile.created_at",
+        "profile.timecreated",
+        "steam.created_at",
+        "steam.timecreated",
+        "created_at"
+    ]) || getNestedValue(userLookup, [
+        "persona.profile.created_at",
+        "persona.profile.timecreated",
+        "persona.created_at",
+        "profile.created_at",
+        "profile.timecreated",
+        "steam.created_at",
+        "steam.timecreated",
+        "created_at"
+    ]);
+}
+
+function extractDayZHours(serverPlayer) {
+    const seconds = getNestedValue(serverPlayer, [
+        "info.radar.indicators.playtime_total",
+        "radar.indicators.playtime_total",
+        "stats.playtime",
+        "playtime",
+        "data.playtime",
+        "player.playtime"
+    ]);
+
+    if (!seconds || Number.isNaN(Number(seconds))) return 0;
+
+    return Math.round((Number(seconds) / 3600) * 10) / 10;
+}
+
+function extractPreviousServerBans(serverPlayer) {
+    const bans = getNestedValue(serverPlayer, [
+        "info.ban_count",
+        "ban_count",
+        "data.info.ban_count",
+        "player.info.ban_count"
+    ]);
+
+    if (!bans || Number.isNaN(Number(bans))) return 0;
+
+    return Number(bans);
 }
 
 async function getKDStats(cfid) {
@@ -198,6 +317,22 @@ async function getLastDeaths(cfid) {
     }
 }
 
+async function getLastKills(cfid) {
+    try {
+        const res = await pool.query(`
+            SELECT * FROM player_deaths
+            WHERE killer = $1
+            ORDER BY created_at DESC
+            LIMIT 5
+        `, [cfid]);
+
+        return res.rows;
+    } catch (err) {
+        console.error("Kills fetch error:", err);
+        return [];
+    }
+}
+
 // ===== CHART =====
 
 function buildChart(stats) {
@@ -254,6 +389,64 @@ function buildChart(stats) {
     return `https://quickchart.io/chart?devicePixelRatio=3&width=800&height=600&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
 }
 
+function buildLastDeathsText(deaths) {
+    if (!Array.isArray(deaths) || deaths.length === 0) {
+        return "-";
+    }
+
+    const lines = deaths.map(d => {
+        const killerText = d.killer
+            ? `[${d.killer_name || "Unknown"}](${buildProfileLink(d.killer)})`
+            : `${d.killer_name || "Unknown"}`;
+
+        const weapon = d.weapon || "-";
+        const distance = d.distance ? `${d.distance}m` : "-";
+
+        const mapLink = buildMapLink(d);
+        const mapText = mapLink ? ` | [View](${mapLink})` : "";
+
+        return `💀 ${killerText} | ${weapon} | ${distance}${mapText}`;
+    });
+
+    let buffer = "";
+
+    for (const line of lines) {
+        if ((buffer + line + "\n").length > 1024) break;
+        buffer += line + "\n";
+    }
+
+    return buffer.trim() || "-";
+}
+
+function buildLastKillsText(kills) {
+    if (!Array.isArray(kills) || kills.length === 0) {
+        return "-";
+    }
+
+    const lines = kills.map(k => {
+        const victimText = k.victim
+            ? `[${k.victim_name || "Unknown"}](${buildProfileLink(k.victim)})`
+            : `${k.victim_name || "Unknown"}`;
+
+        const weapon = k.weapon || "-";
+        const distance = k.distance ? `${k.distance}m` : "-";
+
+        const mapLink = buildMapLink(k);
+        const mapText = mapLink ? ` | [View](${mapLink})` : "";
+
+        return `☠️ ${victimText} | ${weapon} | ${distance}${mapText}`;
+    });
+
+    let buffer = "";
+
+    for (const line of lines) {
+        if ((buffer + line + "\n").length > 1024) break;
+        buffer += line + "\n";
+    }
+
+    return buffer.trim() || "-";
+}
+
 // ===== PROFILE =====
 
 async function handleProfile(interaction) {
@@ -277,27 +470,16 @@ async function handleProfile(interaction) {
             };
         }
 
-        const profile = await getCFProfile(cfid);
+        const altPlayer = await getAltPlayerByCfid(cfid);
+        const serverPlayer = await getCFServerPlayer(cfid);
+        const userLookup = altPlayer?.steam64
+            ? await getCFUserLookup(altPlayer.steam64)
+            : null;
+
+        const steamCreated = extractSteamCreated(serverPlayer, userLookup);
+        const dayzHours = extractDayZHours(serverPlayer);
+        const previousBans = extractPreviousServerBans(serverPlayer);
         const kdStats = await getKDStats(cfid);
-
-        const steamCreated =
-            profile?.persona?.profile?.created_at ||
-            profile?.persona?.profile?.timecreated ||
-            profile?.persona?.created_at ||
-            profile?.profile?.created_at ||
-            null;
-
-        const dayzSeconds =
-            profile?.info?.radar?.indicators?.playtime_total ||
-            profile?.stats?.playtime ||
-            profile?.playtime ||
-            0;
-
-        const dayzHours = Math.round((dayzSeconds / 3600) * 10) / 10;
-
-        const previousBans =
-            profile?.info?.ban_count ||
-            0;
 
         const brain = stats.brain || 0;
         const head = stats.head || 0;
@@ -311,38 +493,16 @@ async function handleProfile(interaction) {
             totalShots > 0 ? ((v / totalShots) * 100).toFixed(1) : "0.0";
 
         const deaths = await getLastDeaths(cfid);
+        const kills = await getLastKills(cfid);
 
-        let deathsText = "-";
-
-        if (Array.isArray(deaths) && deaths.length > 0) {
-            const lines = deaths.map(d => {
-                const killerText = d.killer
-                    ? `[${d.killer_name || "Unknown"}](${buildProfileLink(d.killer)})`
-                    : `${d.killer_name || "Unknown"}`;
-
-                const weapon = d.weapon || "-";
-                const distance = d.distance ? `${d.distance}m` : "-";
-
-                const mapLink = buildMapLink(d);
-                const mapText = mapLink ? ` | [View](${mapLink})` : "";
-
-                return `💀 ${killerText} | ${weapon} | ${distance}${mapText}`;
-            });
-
-            let buffer = "";
-            for (const line of lines) {
-                if ((buffer + line + "\n").length > 1024) break;
-                buffer += line + "\n";
-            }
-
-            deathsText = buffer.trim() || "-";
-        }
+        const deathsText = buildLastDeathsText(deaths);
+        const killsText = buildLastKillsText(kills);
 
         const embed = new EmbedBuilder()
             .setColor("#00c853")
             .setTitle("GrevBot Player Profile Analysis")
             .setDescription(
-                `👤 **${stats.name || cfid}**\n` +
+                `👤 **${stats.name || altPlayer?.last_name || cfid}**\n` +
                 `[Open Profile](${buildProfileLink(cfid)})\n\n` +
                 `🆔 \`${cfid}\``
             )
@@ -369,13 +529,17 @@ async function handleProfile(interaction) {
                         `🔴 Torso: ${torso} (${calc(torso)}%)\n` +
                         `🟠 Arms: ${arms} (${calc(arms)}%)\n` +
                         `🟢 Legs: ${legs} (${calc(legs)}%)\n`
+                },
+                {
+                    name: "☠️ Last Kills",
+                    value: killsText
+                },
+                {
+                    name: "☠️ Last Deaths",
+                    value: deathsText
                 }
             )
             .setImage(buildChart(stats))
-            .addFields({
-                name: "☠️ Last Deaths",
-                value: deathsText
-            })
             .setFooter({
                 text: "Grevbot Player-analysis- 2026"
             });
