@@ -43,7 +43,7 @@ function getDayZHours(player) {
         player?.playtime ||
         0;
 
-    return Math.round((seconds / 3600) * 10) / 10;
+    return Math.floor(seconds / 3600);
 }
 
 function getServerBanCount(player) {
