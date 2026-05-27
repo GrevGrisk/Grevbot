@@ -704,7 +704,7 @@ function buildPlayerIntelEmbed(type, current, risk = null) {
 async function sendPlayerIntelAlert(client, type, current, risk = null) {
     if (!shouldSendPlayerIntelAlert(type, current.steam64)) return false;
 
-    const channelId = process.env.PLAYER_INTEL_CHANNEL_ID || process.env.ALT_ALERT_CHANNEL_ID || "1508534144286589132";
+    const channelId = process.env.PLAYER_INTEL_ALERT_CHANNEL_ID || process.env.PLAYER_INTEL_CHANNEL_ID || process.env.ALT_ALERT_CHANNEL_ID || "1508534144286589132";
 
     let channel;
     try {
