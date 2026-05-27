@@ -384,11 +384,13 @@ async function findSubnetBanEvasionMatches(data) {
     return result.rows.filter(row => isRecentBan(row.steam64));
 }
 
-function buildAltAlertEmbed(current, matched) {
-    return new EmbedBuilder()
+function buildAltAlertEmbed(current, matches) {
+    const matchedAccounts = Array.isArray(matches) ? matches : [matches];
+
+    const embed = new EmbedBuilder()
         .setTitle("🚨 GrevBot Alt Account Detection")
         .setColor(0xff0000)
-        .setDescription("**Possible alt account detected**\nShared IP found between two accounts.")
+        .setDescription("**Possible alt account detected**\nShared IP found between this player and one or more stored accounts.")
         .addFields(
             {
                 name: "👤 Current Player",
@@ -399,29 +401,45 @@ function buildAltAlertEmbed(current, matched) {
                     `🌐 **IP:** \`${current.ip_masked}\`\n` +
                     `🏢 **Provider:** ${current.provider || "Unknown"}\n` +
                     `📍 **Country:** ${current.country_name || current.country_code || "Unknown"}`,
-                inline: true
-            },
-            {
-                name: "🕵️ Matched Account",
-                value:
-                    `🎮 **Name:** ${playerLink(matched.last_name, matched.cftools_id)}\n` +
-                    `🆔 **CFTools:** ${idLink(matched.cftools_id, matched.cftools_id)}\n` +
-                    `🔗 **Steam64:** ${idLink(matched.steam64, matched.cftools_id)}\n` +
-                    `🌐 **IP:** \`${matched.ip_masked || current.ip_masked}\`\n` +
-                    `🏢 **Provider:** ${matched.provider || current.provider || "Unknown"}\n` +
-                    `📍 **Country:** ${matched.country_name || matched.country_code || current.country_name || "Unknown"}`,
-                inline: true
+                inline: false
             },
             {
                 name: "📊 Match Details",
                 value:
                     `⚠️ **Type:** Shared IP\n` +
                     `🔥 **Confidence:** HIGH\n` +
-                    `📅 **First Seen:** ${formatDate(matched.first_seen)}\n` +
-                    `📈 **Times Seen:** ${matched.seen_count || 1}`,
+                    `📈 **Matches Found:** ${matchedAccounts.length}`,
                 inline: false
             }
-        )
+        );
+
+    const limitedMatches = matchedAccounts.slice(0, 20);
+
+    for (const match of limitedMatches) {
+        embed.addFields({
+            name: `🕵️ ${match.last_name || "Unknown"}`,
+            value:
+                `🎮 **Name:** ${playerLink(match.last_name, match.cftools_id)}\n` +
+                `🆔 **CFTools:** ${idLink(match.cftools_id, match.cftools_id)}\n` +
+                `🔗 **Steam64:** ${idLink(match.steam64, match.cftools_id)}\n` +
+                `🌐 **IP:** \`${match.ip_masked || current.ip_masked}\`\n` +
+                `🏢 **Provider:** ${match.provider || current.provider || "Unknown"}\n` +
+                `📍 **Country:** ${match.country_name || match.country_code || current.country_name || "Unknown"}\n` +
+                `📅 **First Seen:** ${formatDate(match.first_seen)}\n` +
+                `📈 **Times Seen:** ${match.seen_count || 1}`,
+            inline: true
+        });
+    }
+
+    if (matchedAccounts.length > limitedMatches.length) {
+        embed.addFields({
+            name: "➕ More Matches",
+            value: `${matchedAccounts.length - limitedMatches.length} additional matches hidden to stay within Discord embed limits.`,
+            inline: false
+        });
+    }
+
+    return embed
         .setFooter({ text: "GrevBot • Alt account detection" })
         .setTimestamp();
 }
@@ -472,7 +490,7 @@ function buildSubnetBanEvasionEmbed(current, matched) {
         .setTimestamp();
 }
 
-async function sendAltAlert(client, current, matched) {
+async function sendAltAlert(client, current, matches) {
     const channelId = process.env.ALT_ALERT_CHANNEL_ID || "1508534144286589132";
 
     let channel;
@@ -485,7 +503,7 @@ async function sendAltAlert(client, current, matched) {
 
     if (!channel) return;
 
-    const embed = buildAltAlertEmbed(current, matched);
+    const embed = buildAltAlertEmbed(current, matches);
     await channel.send({ embeds: [embed] });
 }
 
@@ -709,13 +727,19 @@ async function syncAndDetect(client) {
         await saveIpLink(currentPlayerId, ipHash, current);
         saved++;
 
+        const newPreviousMatches = [];
+
         for (const matched of previousMatches) {
             const exists = await altCaseExists(currentPlayerId, matched.player_id, "Shared IP");
             if (exists) continue;
 
             await createAltCase(currentPlayerId, matched.player_id, "Shared IP", 90);
-            await sendAltAlert(client, current, matched);
+            newPreviousMatches.push(matched);
             alerts++;
+        }
+
+        if (newPreviousMatches.length > 0) {
+            await sendAltAlert(client, current, newPreviousMatches);
         }
 
         for (const matched of subnetMatches) {
