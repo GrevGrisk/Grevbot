@@ -129,7 +129,13 @@ async function getCFUserLookup(identifier) {
 async function getAltPlayerByCfid(cfid) {
     try {
         const result = await pool.query(`
-            SELECT steam64, cftools_id, last_name
+            SELECT
+                steam64,
+                cftools_id,
+                last_name,
+                steam_created,
+                dayz_hours,
+                previous_bans
             FROM alt_players
             WHERE cftools_id = $1
             LIMIT 1
@@ -471,15 +477,11 @@ async function handleProfile(interaction) {
         }
 
         const altPlayer = await getAltPlayerByCfid(cfid);
-        const serverPlayer = await getCFServerPlayer(cfid);
-        const userLookup = altPlayer?.steam64
-            ? await getCFUserLookup(altPlayer.steam64)
-            : null;
-
-        const steamCreated = extractSteamCreated(serverPlayer, userLookup);
-        const dayzHours = extractDayZHours(serverPlayer);
-        const previousBans = extractPreviousServerBans(serverPlayer);
         const kdStats = await getKDStats(cfid);
+
+        const steamCreated = altPlayer?.steam_created || null;
+        const dayzHours = altPlayer?.dayz_hours ?? 0;
+        const previousBans = altPlayer?.previous_bans ?? 0;
 
         const brain = stats.brain || 0;
         const head = stats.head || 0;
