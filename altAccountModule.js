@@ -82,19 +82,15 @@ function extractSteamCreated(player) {
         player?.steam_created ||
         player?.steam_timecreated ||
         player?.steam?.timecreated ||
-        player?.steam?.created_at ||
         player?.persona?.steam?.timecreated ||
-        player?.persona?.steam?.created_at ||
         player?.persona?.profile?.steam_created ||
         player?.persona?.profile?.steam_timecreated ||
         player?.data?.persona?.profile?.timecreated ||
         player?.data?.profile?.timecreated ||
         player?.data?.steam?.timecreated ||
-        player?.data?.steam?.created_at ||
         player?.player?.persona?.profile?.timecreated ||
         player?.player?.profile?.timecreated ||
         player?.player?.steam?.timecreated ||
-        player?.player?.steam?.created_at ||
         null
     );
 }
