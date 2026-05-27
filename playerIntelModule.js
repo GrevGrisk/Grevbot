@@ -39,26 +39,11 @@ function getSteamCreationDate(player) {
 function getDayZHours(player) {
     const seconds =
         player?.info?.radar?.indicators?.playtime_total ||
-        player?.radar?.indicators?.playtime_total ||
         player?.stats?.playtime ||
-        player?.stats?.playtime_total ||
         player?.playtime ||
-        player?.playtime_total ||
-        player?.data?.info?.radar?.indicators?.playtime_total ||
-        player?.data?.radar?.indicators?.playtime_total ||
-        player?.data?.stats?.playtime ||
-        player?.data?.stats?.playtime_total ||
-        player?.data?.playtime ||
-        player?.data?.playtime_total ||
-        player?.player?.info?.radar?.indicators?.playtime_total ||
-        player?.player?.radar?.indicators?.playtime_total ||
-        player?.player?.stats?.playtime ||
-        player?.player?.stats?.playtime_total ||
-        player?.player?.playtime ||
-        player?.player?.playtime_total ||
         0;
 
-    return Math.round((Number(seconds || 0) / 3600) * 10) / 10;
+    return Math.round((seconds / 3600) * 10) / 10;
 }
 
 function getServerBanCount(player) {
