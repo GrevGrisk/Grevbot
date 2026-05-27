@@ -37,7 +37,6 @@ const ALERT_CHANNEL_ID = "1478757145288900679";
 const BAN_FEED_CHANNEL_ID = "1508587026302107678";
 
 const EXCLUDED_WEAPONS = ["TriDagger"];
-
 const lastHit = new Map();
 
 let processingQueue = Promise.resolve();
@@ -197,6 +196,9 @@ function parseKill(text) {
 // ===== SLASH HANDLER =====
 client.on("interactionCreate", async interaction => {
     if (interaction.isButton()) {
+        const handledIntelButton = await playerIntelModule.handleIntelButton(interaction);
+        if (handledIntelButton) return;
+
         await statsAlert.handleAlertInteraction(interaction);
         return;
     }
@@ -218,7 +220,6 @@ client.on("interactionCreate", async interaction => {
             }
 
             await altAccountModule.sendTestAltAlert(client);
-
             await interaction.editReply("Test alt alert sent.");
         } catch (err) {
             console.error("Test alt alert error:", err);
@@ -233,7 +234,6 @@ client.on("interactionCreate", async interaction => {
             }
 
             await playerIntelModule.sendTestIntelAlerts(client);
-
             await interaction.editReply("Test player intel alerts sent.");
         } catch (err) {
             console.error("Test player intel error:", err);
@@ -352,7 +352,6 @@ async function processInputMessage(msg) {
     const isHit = content.includes("got hit by");
     const isKill = content.includes("got killed by");
 
-    // ===== HIT =====
     if (isHit) {
         const hit = parseHit(content);
         if (!hit) return;
@@ -406,7 +405,6 @@ async function processInputMessage(msg) {
         return;
     }
 
-    // ===== KILL =====
     if (isKill) {
         const kill = parseKill(content);
         if (!kill) return;
@@ -442,7 +440,6 @@ async function processInputMessage(msg) {
 
         if (lastHit.has(key)) {
             const hits = lastHit.get(key);
-
             const exact = hits.filter(h => h.distance === kill.distance);
 
             if (exact.length > 0) {
