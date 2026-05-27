@@ -75,6 +75,33 @@ function formatDateTime(value) {
     return new Date(value).toISOString().replace("T", " ").split(".")[0] + " UTC";
 }
 
+function findSteamCreatedValue(obj, depth = 0) {
+    if (!obj || typeof obj !== "object" || depth > 6) return null;
+
+    const directKeys = [
+        "timecreated",
+        "created_at",
+        "created",
+        "steam_created",
+        "steam_timecreated",
+        "creation_date",
+        "createdAt"
+    ];
+
+    for (const key of directKeys) {
+        if (obj[key] !== undefined && obj[key] !== null && obj[key] !== "") {
+            return obj[key];
+        }
+    }
+
+    for (const value of Object.values(obj)) {
+        const found = findSteamCreatedValue(value, depth + 1);
+        if (found) return found;
+    }
+
+    return null;
+}
+
 function extractSteamCreated(player) {
     return normalizeDateValue(
         player?.persona?.profile?.created_at ||
@@ -82,6 +109,26 @@ function extractSteamCreated(player) {
         player?.persona?.created_at ||
         player?.profile?.created_at ||
         player?.profile?.timecreated ||
+        player?.created_at ||
+        player?.created ||
+        player?.steam_created ||
+        player?.steam?.created_at ||
+        player?.steam?.timecreated ||
+        player?.persona?.steam?.created_at ||
+        player?.persona?.steam?.timecreated ||
+        player?.persona?.profile?.steam_created ||
+        player?.persona?.profile?.steam_timecreated ||
+        player?.data?.persona?.profile?.created_at ||
+        player?.data?.persona?.profile?.timecreated ||
+        player?.data?.profile?.created_at ||
+        player?.data?.profile?.timecreated ||
+        player?.data?.steam?.created_at ||
+        player?.data?.steam?.timecreated ||
+        player?.player?.persona?.profile?.created_at ||
+        player?.player?.persona?.profile?.timecreated ||
+        player?.player?.profile?.created_at ||
+        player?.player?.profile?.timecreated ||
+        findSteamCreatedValue(player) ||
         null
     );
 }
@@ -286,7 +333,7 @@ async function getOrCreatePlayer(player) {
             SET cftools_id = $1,
                 beguid = $2,
                 last_name = $3,
-                steam_created = $4,
+                steam_created = COALESCE($4, steam_created),
                 dayz_hours = $5,
                 previous_bans = $6
             WHERE id = $7
