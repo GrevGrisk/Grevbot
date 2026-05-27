@@ -168,19 +168,15 @@ function extractSteamCreated(serverPlayer, userLookup) {
             "steam_created",
             "steam_timecreated",
             "steam.timecreated",
-            "steam.created_at",
             "persona.steam.timecreated",
-            "persona.steam.created_at",
             "persona.profile.steam_created",
             "persona.profile.steam_timecreated",
             "data.persona.profile.timecreated",
             "data.profile.timecreated",
             "data.steam.timecreated",
-            "data.steam.created_at",
             "player.persona.profile.timecreated",
             "player.profile.timecreated",
-            "player.steam.timecreated",
-            "player.steam.created_at"
+            "player.steam.timecreated"
         ]) ||
         getNestedValue(userLookup, [
             "persona.profile.timecreated",
@@ -188,19 +184,15 @@ function extractSteamCreated(serverPlayer, userLookup) {
             "steam_created",
             "steam_timecreated",
             "steam.timecreated",
-            "steam.created_at",
             "persona.steam.timecreated",
-            "persona.steam.created_at",
             "persona.profile.steam_created",
             "persona.profile.steam_timecreated",
             "data.persona.profile.timecreated",
             "data.profile.timecreated",
             "data.steam.timecreated",
-            "data.steam.created_at",
             "player.persona.profile.timecreated",
             "player.profile.timecreated",
-            "player.steam.timecreated",
-            "player.steam.created_at"
+            "player.steam.timecreated"
         ]) ||
         null
     );
