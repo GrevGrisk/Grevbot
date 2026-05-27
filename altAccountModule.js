@@ -64,6 +64,31 @@ function formatDateTime(value) {
     return date.toISOString().replace("T", " ").split(".")[0] + " UTC";
 }
 
+function extractDayZHours(player) {
+    const seconds =
+        player?.info?.radar?.indicators?.playtime_total ||
+        player?.radar?.indicators?.playtime_total ||
+        player?.stats?.playtime ||
+        player?.stats?.playtime_total ||
+        player?.playtime ||
+        player?.playtime_total ||
+        player?.data?.info?.radar?.indicators?.playtime_total ||
+        player?.data?.radar?.indicators?.playtime_total ||
+        player?.data?.stats?.playtime ||
+        player?.data?.stats?.playtime_total ||
+        player?.data?.playtime ||
+        player?.data?.playtime_total ||
+        player?.player?.info?.radar?.indicators?.playtime_total ||
+        player?.player?.radar?.indicators?.playtime_total ||
+        player?.player?.stats?.playtime ||
+        player?.player?.stats?.playtime_total ||
+        player?.player?.playtime ||
+        player?.player?.playtime_total ||
+        0;
+
+    return Math.round((Number(seconds || 0) / 3600) * 10) / 10;
+}
+
 async function getCFToolsToken() {
     const response = await axios.post(
         `${CF_BASE}/v1/auth/register`,
@@ -151,6 +176,7 @@ async function getOrCreatePlayer(player) {
     const cftoolsId = player.cftools_id || null;
     const beguid = player.beguid || null;
     const name = player.player_name || null;
+    const dayzHours = Number(player.dayz_hours || 0);
 
     const existing = await pool.query(`
         SELECT id FROM alt_players
@@ -163,19 +189,20 @@ async function getOrCreatePlayer(player) {
             UPDATE alt_players
             SET cftools_id = $1,
                 beguid = $2,
-                last_name = $3
-            WHERE id = $4
-        `, [cftoolsId, beguid, name, existing.rows[0].id]);
+                last_name = $3,
+                dayz_hours = CASE WHEN $4 > 0 THEN $4 ELSE dayz_hours END
+            WHERE id = $5
+        `, [cftoolsId, beguid, name, dayzHours, existing.rows[0].id]);
 
         return existing.rows[0].id;
     }
 
     const created = await pool.query(`
         INSERT INTO alt_players
-        (steam64, cftools_id, beguid, last_name, created_at)
-        VALUES ($1, $2, $3, $4, CURRENT_DATE)
+        (steam64, cftools_id, beguid, last_name, created_at, dayz_hours)
+        VALUES ($1, $2, $3, $4, CURRENT_DATE, $5)
         RETURNING id
-    `, [steam64, cftoolsId, beguid, name]);
+    `, [steam64, cftoolsId, beguid, name, dayzHours]);
 
     return created.rows[0].id;
 }
@@ -707,6 +734,7 @@ async function syncAndDetect(client) {
             cftools_id: p?.cftools_id || null,
             beguid: p?.gamedata?.beguid || p?.gamedata?.be_guid || null,
             player_name: p?.gamedata?.player_name || p?.persona?.profile?.name || "Unknown",
+            dayz_hours: extractDayZHours(p),
             ip,
             ip_masked: maskIP(ip),
             ip_subnet: subnetIP(ip),
