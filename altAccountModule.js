@@ -22,8 +22,24 @@ function subnetIP(ip) {
     return `${parts[0]}.${parts[1]}.${parts[2]}.xxx`;
 }
 
+function normalizeDateValue(value) {
+    if (!value) return null;
+
+    if (typeof value === "number") {
+        const ms = value > 9999999999 ? value : value * 1000;
+        const date = new Date(ms);
+        return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    }
+
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 function hashIP(ip) {
-    if (!process.env.IP_HASH_SECRET) return null;
+    if (!process.env.IP_HASH_SECRET) {
+        console.error("Missing IP_HASH_SECRET environment variable");
+        return null;
+    }
 
     return crypto
         .createHash("sha256")
@@ -32,7 +48,9 @@ function hashIP(ip) {
 }
 
 function cfProfileUrl(cftoolsId) {
-    return cftoolsId ? `https://app.cftools.cloud/profile/${cftoolsId}` : null;
+    return cftoolsId
+        ? `https://app.cftools.cloud/profile/${cftoolsId}`
+        : null;
 }
 
 function playerLink(name, cftoolsId) {
@@ -57,35 +75,37 @@ function formatDateTime(value) {
     return new Date(value).toISOString().replace("T", " ").split(".")[0] + " UTC";
 }
 
-function extractSteamCreated(p) {
-    return (
-        p?.persona?.profile?.created_at ||
-        p?.persona?.profile?.timecreated ||
-        p?.persona?.created_at ||
-        p?.profile?.created_at ||
+function extractSteamCreated(player) {
+    return normalizeDateValue(
+        player?.persona?.profile?.created_at ||
+        player?.persona?.profile?.timecreated ||
+        player?.persona?.created_at ||
+        player?.profile?.created_at ||
+        player?.profile?.timecreated ||
         null
     );
 }
 
-function extractDayZHours(p) {
+function extractDayZHours(player) {
     const seconds =
-        p?.info?.radar?.indicators?.playtime_total ||
-        p?.stats?.playtime ||
-        p?.playtime ||
+        player?.info?.radar?.indicators?.playtime_total ||
+        player?.stats?.playtime ||
+        player?.playtime ||
         0;
 
     return Math.round((Number(seconds || 0) / 3600) * 10) / 10;
 }
 
-function extractPreviousBans(p) {
-    return Number(p?.info?.ban_count || 0);
+function extractPreviousBans(player) {
+    return Number(player?.info?.ban_count || 0);
 }
 
 function isRecentBan(steam64) {
     const ban = recentBansBySteam64.get(steam64);
     if (!ban) return false;
 
-    return Date.now() - ban.timestamp <= BAN_EVASION_WINDOW_HOURS * 60 * 60 * 1000;
+    const ageMs = Date.now() - ban.timestamp;
+    return ageMs <= BAN_EVASION_WINDOW_HOURS * 60 * 60 * 1000;
 }
 
 function getRecentBanInfo(steam64) {
@@ -94,7 +114,8 @@ function getRecentBanInfo(steam64) {
 
 function cleanupRecentBans() {
     for (const [steam64, ban] of recentBansBySteam64.entries()) {
-        if (Date.now() - ban.timestamp > BAN_EVASION_WINDOW_HOURS * 60 * 60 * 1000) {
+        const ageMs = Date.now() - ban.timestamp;
+        if (ageMs > BAN_EVASION_WINDOW_HOURS * 60 * 60 * 1000) {
             recentBansBySteam64.delete(steam64);
         }
     }
@@ -175,7 +196,8 @@ async function checkBanlistsForCftoolsId(cftoolsId) {
                 banlistId,
                 ok: true,
                 count: bans.length,
-                bans
+                bans,
+                rawKeys: response.data && typeof response.data === "object" ? Object.keys(response.data) : []
             });
         } catch (err) {
             results.push({
@@ -193,7 +215,11 @@ async function checkBanlistsForCftoolsId(cftoolsId) {
         await markPlayerBannedByCFToolsId(cftoolsId);
     }
 
-    return { cftoolsId, totalBans, results };
+    return {
+        cftoolsId,
+        totalBans,
+        results
+    };
 }
 
 function parseBanExecutedMessage(content) {
@@ -457,7 +483,9 @@ async function markPlayerBannedByCFToolsId(cftoolsId) {
         LIMIT 1
     `, [cftoolsId]);
 
-    if (player.rows.length === 0) return false;
+    if (player.rows.length === 0) {
+        return false;
+    }
 
     recentBansBySteam64.set(player.rows[0].steam64, {
         timestamp: Date.now(),
@@ -593,14 +621,36 @@ function buildSubnetBanEvasionEmbed(current, matched) {
 
 async function sendAltAlert(client, current, matched) {
     const channelId = process.env.ALT_ALERT_CHANNEL_ID || "1508534144286589132";
-    const channel = await client.channels.fetch(channelId);
-    await channel.send({ embeds: [buildAltAlertEmbed(current, matched)] });
+
+    let channel;
+    try {
+        channel = await client.channels.fetch(channelId);
+    } catch (err) {
+        console.error("Alt alert channel fetch failed:", err);
+        return;
+    }
+
+    if (!channel) return;
+
+    const embed = buildAltAlertEmbed(current, matched);
+    await channel.send({ embeds: [embed] });
 }
 
 async function sendSubnetBanEvasionAlert(client, current, matched) {
     const channelId = process.env.ALT_ALERT_CHANNEL_ID || "1508534144286589132";
-    const channel = await client.channels.fetch(channelId);
-    await channel.send({ embeds: [buildSubnetBanEvasionEmbed(current, matched)] });
+
+    let channel;
+    try {
+        channel = await client.channels.fetch(channelId);
+    } catch (err) {
+        console.error("Subnet ban evasion channel fetch failed:", err);
+        return;
+    }
+
+    if (!channel) return;
+
+    const embed = buildSubnetBanEvasionEmbed(current, matched);
+    await channel.send({ embeds: [embed] });
 }
 
 async function sendTestAltAlert(client) {
@@ -715,16 +765,30 @@ async function manualAltCheck(cftoolsId) {
         .setTitle("🚨 GrevBot Manual Alt Check")
         .setColor(0xff0000)
         .setDescription("Possible alt accounts found through shared IP history.")
-        .addFields({
-            name: "👤 Checked Player",
-            value:
-                `🎮 **Name:** ${playerLink(player.last_name, player.cftools_id)}\n` +
-                `🆔 **CFTools:** ${idLink(player.cftools_id, player.cftools_id)}\n` +
-                `🔗 **Steam64:** ${idLink(player.steam64, player.cftools_id)}`,
-            inline: false
-        });
+        .addFields(
+            {
+                name: "👤 Checked Player",
+                value:
+                    `🎮 **Name:** ${playerLink(player.last_name, player.cftools_id)}\n` +
+                    `🆔 **CFTools:** ${idLink(player.cftools_id, player.cftools_id)}\n` +
+                    `🔗 **Steam64:** ${idLink(player.steam64, player.cftools_id)}`,
+                inline: false
+            },
+            {
+                name: "📊 Match Summary",
+                value:
+                    `⚠️ **Type:** Shared IP\n` +
+                    `🔥 **Confidence:** HIGH\n` +
+                    `📈 **Matches Found:** ${matches.length}`,
+                inline: false
+            }
+        )
+        .setFooter({ text: "GrevBot • Manual alt check" })
+        .setTimestamp();
 
-    for (const match of matches.slice(0, 10)) {
+    const limitedMatches = matches.slice(0, 10);
+
+    for (const match of limitedMatches) {
         embed.addFields({
             name: `🕵️ ${match.last_name || "Unknown"}`,
             value:
@@ -740,7 +804,18 @@ async function manualAltCheck(cftoolsId) {
         });
     }
 
-    return { found: true, embeds: [embed] };
+    if (matches.length > 10) {
+        embed.addFields({
+            name: "➕ More Matches",
+            value: `${matches.length - 10} additional matches hidden.`,
+            inline: false
+        });
+    }
+
+    return {
+        found: true,
+        embeds: [embed]
+    };
 }
 
 async function syncAndDetect(client) {
