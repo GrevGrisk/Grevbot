@@ -4,6 +4,7 @@ const { EmbedBuilder } = require("discord.js");
 const pool = require("./db");
 
 const CF_BASE = "https://data.cftools.cloud";
+const STEAM_API_BASE = "https://api.steampowered.com";
 const BAN_EVASION_WINDOW_HOURS = 3;
 
 const recentBansBySteam64 = new Map();
@@ -25,14 +26,37 @@ function subnetIP(ip) {
 function normalizeDateValue(value) {
     if (!value) return null;
 
-    if (typeof value === "number") {
-        const ms = value > 9999999999 ? value : value * 1000;
+    if (typeof value === "number" || /^\d+$/.test(String(value))) {
+        const numeric = Number(value);
+        const ms = numeric > 9999999999 ? numeric : numeric * 1000;
         const date = new Date(ms);
         return Number.isNaN(date.getTime()) ? null : date.toISOString();
     }
 
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+async function getSteamAccountCreated(steam64) {
+    if (!steam64 || !process.env.STEAM_API_KEY) return null;
+
+    try {
+        const response = await axios.get(
+            `${STEAM_API_BASE}/ISteamUser/GetPlayerSummaries/v0002/`,
+            {
+                params: {
+                    key: process.env.STEAM_API_KEY,
+                    steamids: steam64
+                }
+            }
+        );
+
+        const player = response.data?.response?.players?.[0];
+        return normalizeDateValue(player?.timecreated || null);
+    } catch (err) {
+        console.error("Steam API timecreated fetch error:", err.response?.data || err.message || err);
+        return null;
+    }
 }
 
 function hashIP(ip) {
@@ -853,7 +877,7 @@ async function syncAndDetect(client) {
             cftools_id: p?.cftools_id || null,
             beguid: p?.gamedata?.beguid || p?.gamedata?.be_guid || null,
             player_name: p?.gamedata?.player_name || p?.persona?.profile?.name || "Unknown",
-            steam_created: extractSteamCreated(p),
+            steam_created: extractSteamCreated(p) || await getSteamAccountCreated(steam64),
             dayz_hours: extractDayZHours(p),
             previous_bans: extractPreviousBans(p),
             ip,
