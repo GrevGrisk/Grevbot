@@ -26,13 +26,25 @@ function buildProfileLink(cfid) {
     return `https://app.cftools.cloud/profile/${cfid}`;
 }
 
-function formatDate(value) {
-    if (!value) return "Unknown";
+function normalizeDateValue(value) {
+    if (!value) return null;
+
+    if (typeof value === "number" || /^\d+$/.test(String(value))) {
+        const numeric = Number(value);
+        const ms = numeric > 9999999999 ? numeric : numeric * 1000;
+        const date = new Date(ms);
+        return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    }
 
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "Unknown";
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
 
-    return date.toISOString().split("T")[0];
+function formatDate(value) {
+    const normalized = normalizeDateValue(value);
+    if (!normalized) return "Unknown";
+
+    return normalized.split("T")[0];
 }
 
 function getNestedValue(obj, paths) {
@@ -148,8 +160,35 @@ async function getAltPlayerByCfid(cfid) {
     }
 }
 
+function findSteamCreatedValue(obj, depth = 0) {
+    if (!obj || typeof obj !== "object" || depth > 6) return null;
+
+    const directKeys = [
+        "timecreated",
+        "created_at",
+        "created",
+        "steam_created",
+        "steam_timecreated",
+        "creation_date",
+        "createdAt"
+    ];
+
+    for (const key of directKeys) {
+        if (obj[key] !== undefined && obj[key] !== null && obj[key] !== "") {
+            return obj[key];
+        }
+    }
+
+    for (const value of Object.values(obj)) {
+        const found = findSteamCreatedValue(value, depth + 1);
+        if (found) return found;
+    }
+
+    return null;
+}
+
 function extractSteamCreated(serverPlayer, userLookup) {
-    return getNestedValue(serverPlayer, [
+    const paths = [
         "persona.profile.created_at",
         "persona.profile.timecreated",
         "persona.created_at",
@@ -157,17 +196,32 @@ function extractSteamCreated(serverPlayer, userLookup) {
         "profile.timecreated",
         "steam.created_at",
         "steam.timecreated",
-        "created_at"
-    ]) || getNestedValue(userLookup, [
-        "persona.profile.created_at",
-        "persona.profile.timecreated",
-        "persona.created_at",
-        "profile.created_at",
-        "profile.timecreated",
-        "steam.created_at",
-        "steam.timecreated",
-        "created_at"
-    ]);
+        "persona.steam.created_at",
+        "persona.steam.timecreated",
+        "persona.profile.steam_created",
+        "persona.profile.steam_timecreated",
+        "data.persona.profile.created_at",
+        "data.persona.profile.timecreated",
+        "data.profile.created_at",
+        "data.profile.timecreated",
+        "data.steam.created_at",
+        "data.steam.timecreated",
+        "player.persona.profile.created_at",
+        "player.persona.profile.timecreated",
+        "player.profile.created_at",
+        "player.profile.timecreated",
+        "created_at",
+        "created",
+        "steam_created"
+    ];
+
+    return normalizeDateValue(
+        getNestedValue(serverPlayer, paths) ||
+        getNestedValue(userLookup, paths) ||
+        findSteamCreatedValue(serverPlayer) ||
+        findSteamCreatedValue(userLookup) ||
+        null
+    );
 }
 
 function extractDayZHours(serverPlayer) {
@@ -479,9 +533,39 @@ async function handleProfile(interaction) {
         const altPlayer = await getAltPlayerByCfid(cfid);
         const kdStats = await getKDStats(cfid);
 
-        const steamCreated = altPlayer?.steam_created || null;
-        const dayzHours = altPlayer?.dayz_hours ?? 0;
-        const previousBans = altPlayer?.previous_bans ?? 0;
+        let steamCreated = altPlayer?.steam_created || null;
+        let dayzHours = altPlayer?.dayz_hours ?? 0;
+        let previousBans = altPlayer?.previous_bans ?? 0;
+
+        if (!steamCreated) {
+            const serverPlayer = await getCFServerPlayer(cfid);
+            const userLookup = await getCFUserLookup(altPlayer?.steam64 || cfid);
+
+            steamCreated = extractSteamCreated(serverPlayer, userLookup) || steamCreated;
+
+            if (!dayzHours && serverPlayer) {
+                dayzHours = extractDayZHours(serverPlayer);
+            }
+
+            if (!previousBans && serverPlayer) {
+                previousBans = extractPreviousServerBans(serverPlayer);
+            }
+
+            if (steamCreated && altPlayer?.steam64) {
+                await pool.query(`
+                    UPDATE alt_players
+                    SET steam_created = COALESCE(steam_created, $1),
+                        dayz_hours = CASE WHEN dayz_hours IS NULL OR dayz_hours = 0 THEN $2 ELSE dayz_hours END,
+                        previous_bans = CASE WHEN previous_bans IS NULL OR previous_bans = 0 THEN $3 ELSE previous_bans END
+                    WHERE steam64 = $4
+                `, [
+                    steamCreated,
+                    dayzHours,
+                    previousBans,
+                    altPlayer.steam64
+                ]);
+            }
+        }
 
         const brain = stats.brain || 0;
         const head = stats.head || 0;
