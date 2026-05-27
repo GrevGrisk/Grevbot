@@ -3,7 +3,6 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("
 const pool = require("./db");
 
 const CF_BASE = "https://data.cftools.cloud";
-const STEAM_API_BASE = "https://api.steampowered.com";
 const PLAYER_INTEL_CHANNEL_ID = "1508549810482057216";
 
 const sentAlerts = new Set();
@@ -27,64 +26,39 @@ function formatDate(value) {
     return date.toISOString().split("T")[0];
 }
 
-function normalizeDateValue(value) {
-    if (!value) return null;
-
-    if (typeof value === "number" || /^\d+$/.test(String(value))) {
-        const numeric = Number(value);
-        const ms = numeric > 9999999999 ? numeric : numeric * 1000;
-        const date = new Date(ms);
-        return Number.isNaN(date.getTime()) ? null : date.toISOString();
-    }
-
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
 function getSteamCreationDate(player) {
-    return normalizeDateValue(
+    return (
+        player?.persona?.profile?.created_at ||
         player?.persona?.profile?.timecreated ||
-        player?.profile?.timecreated ||
-        player?.steam_timecreated ||
-        player?.steam?.timecreated ||
-        player?.persona?.steam?.timecreated ||
+        player?.persona?.created_at ||
+        player?.profile?.created_at ||
         null
     );
-}
-
-async function getSteamAccountCreated(steam64) {
-    if (!steam64 || steam64 === "Unknown" || !process.env.STEAM_API_KEY) return null;
-
-    try {
-        const response = await axios.get(
-            `${STEAM_API_BASE}/ISteamUser/GetPlayerSummaries/v2/`,
-            {
-                params: {
-                    key: process.env.STEAM_API_KEY,
-                    steamids: steam64
-                }
-            }
-        );
-
-        const steamPlayer = response.data?.response?.players?.[0];
-
-        return steamPlayer?.timecreated
-            ? new Date(Number(steamPlayer.timecreated) * 1000).toISOString()
-            : null;
-    } catch (err) {
-        console.error("Steam API timecreated fetch error:", err.response?.data || err.message || err);
-        return null;
-    }
 }
 
 function getDayZHours(player) {
     const seconds =
         player?.info?.radar?.indicators?.playtime_total ||
+        player?.radar?.indicators?.playtime_total ||
         player?.stats?.playtime ||
+        player?.stats?.playtime_total ||
         player?.playtime ||
+        player?.playtime_total ||
+        player?.data?.info?.radar?.indicators?.playtime_total ||
+        player?.data?.radar?.indicators?.playtime_total ||
+        player?.data?.stats?.playtime ||
+        player?.data?.stats?.playtime_total ||
+        player?.data?.playtime ||
+        player?.data?.playtime_total ||
+        player?.player?.info?.radar?.indicators?.playtime_total ||
+        player?.player?.radar?.indicators?.playtime_total ||
+        player?.player?.stats?.playtime ||
+        player?.player?.stats?.playtime_total ||
+        player?.player?.playtime ||
+        player?.player?.playtime_total ||
         0;
 
-    return Math.round((seconds / 3600) * 10) / 10;
+    return Math.round((Number(seconds || 0) / 3600) * 10) / 10;
 }
 
 function getServerBanCount(player) {
@@ -133,15 +107,13 @@ function getLongestKill(player) {
     );
 }
 
-async function getPlayerData(player) {
+function getPlayerData(player) {
     const kills = getKills(player);
     const deaths = getDeaths(player);
     const fired = getShotsFired(player);
     const hits = getHits(player);
     const dayzHours = getDayZHours(player);
     const longestKill = getLongestKill(player);
-    const steam64 = player?.gamedata?.steam64 || "Unknown";
-    const steamCreated = getSteamCreationDate(player) || await getSteamAccountCreated(steam64);
 
     const kd = deaths > 0 ? kills / deaths : kills;
     const accuracy = fired > 0 ? (hits / fired) * 100 : 0;
@@ -150,8 +122,8 @@ async function getPlayerData(player) {
     return {
         name: player?.gamedata?.player_name || player?.persona?.profile?.name || "Unknown",
         cftoolsId: player?.cftools_id || null,
-        steam64,
-        steamCreated,
+        steam64: player?.gamedata?.steam64 || "Unknown",
+        steamCreated: getSteamCreationDate(player),
         dayzHours,
         serverBanCount: getServerBanCount(player),
         kills,
@@ -462,7 +434,7 @@ async function scanAndAlert(client) {
     let alerts = 0;
 
     for (const player of players) {
-        const data = await getPlayerData(player);
+        const data = getPlayerData(player);
 
         if (!data.steam64 || data.steam64 === "Unknown") continue;
 
