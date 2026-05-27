@@ -4,6 +4,7 @@ const pool = require("./db");
 const statsAlert = require("./statsAlertModule");
 
 const CF_BASE = "https://data.cftools.cloud";
+const STEAM_API_BASE = "https://api.steampowered.com";
 
 let cachedToken = null;
 let cachedTokenExpires = 0;
@@ -62,6 +63,28 @@ function getNestedValue(obj, paths) {
     }
 
     return null;
+}
+
+async function getSteamAccountCreated(steam64) {
+    if (!steam64 || !process.env.STEAM_API_KEY) return null;
+
+    try {
+        const response = await axios.get(
+            `${STEAM_API_BASE}/ISteamUser/GetPlayerSummaries/v0002/`,
+            {
+                params: {
+                    key: process.env.STEAM_API_KEY,
+                    steamids: steam64
+                }
+            }
+        );
+
+        const player = response.data?.response?.players?.[0];
+        return normalizeDateValue(player?.timecreated || null);
+    } catch (err) {
+        console.error("Steam API timecreated fetch error:", err.response?.data || err.message || err);
+        return null;
+    }
 }
 
 async function getCFToken() {
@@ -515,7 +538,10 @@ async function handleProfile(interaction) {
             const serverPlayer = await getCFServerPlayer(cfid);
             const userLookup = await getCFUserLookup(altPlayer?.steam64 || cfid);
 
-            steamCreated = extractSteamCreated(serverPlayer, userLookup) || steamCreated;
+            steamCreated =
+                await getSteamAccountCreated(altPlayer?.steam64) ||
+                extractSteamCreated(serverPlayer, userLookup) ||
+                steamCreated;
 
             if (!dayzHours && serverPlayer) {
                 dayzHours = extractDayZHours(serverPlayer);
