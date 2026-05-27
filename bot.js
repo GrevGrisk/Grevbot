@@ -320,6 +320,14 @@ client.on("interactionCreate", async interaction => {
 // ===== MESSAGE PROCESSOR =====
 async function processInputMessage(msg) {
     if (msg.author.id === client.user.id) return;
+
+    try {
+        const handledBanWebhook = await altAccountModule.handleBanWebhookMessage(msg.content);
+        if (handledBanWebhook) return;
+    } catch (err) {
+        console.error("Ban webhook parse error:", err);
+    }
+
     if (msg.channel.id !== INPUT_CHANNEL_ID) return;
 
     const content = msg.content;
