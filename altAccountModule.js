@@ -386,6 +386,20 @@ async function findSubnetBanEvasionMatches(data) {
 
 function buildAltAlertEmbed(current, matches) {
     const matchedAccounts = Array.isArray(matches) ? matches : [matches];
+    const limitedMatches = matchedAccounts.slice(0, 10);
+
+    const matchedValue = limitedMatches.map((match, index) =>
+        `🕵️ **${match.last_name || "Unknown"}**\n` +
+        `🎮 **Name:** ${playerLink(match.last_name, match.cftools_id)}\n` +
+        `🆔 **CFTools:** ${idLink(match.cftools_id, match.cftools_id)}\n` +
+        `🔗 **Steam64:** ${idLink(match.steam64, match.cftools_id)}\n` +
+        `🌐 **IP:** \`${match.ip_masked || current.ip_masked}\`\n` +
+        `🏢 **Provider:** ${match.provider || current.provider || "Unknown"}\n` +
+        `📍 **Country:** ${match.country_name || match.country_code || current.country_name || "Unknown"}\n` +
+        `📅 **First Seen:** ${formatDate(match.first_seen)}\n` +
+        `📈 **Times Seen:** ${match.seen_count || 1}` +
+        (index < limitedMatches.length - 1 ? "\n\n" : "")
+    ).join("");
 
     const embed = new EmbedBuilder()
         .setTitle("🚨 GrevBot Alt Account Detection")
@@ -401,7 +415,12 @@ function buildAltAlertEmbed(current, matches) {
                     `🌐 **IP:** \`${current.ip_masked}\`\n` +
                     `🏢 **Provider:** ${current.provider || "Unknown"}\n` +
                     `📍 **Country:** ${current.country_name || current.country_code || "Unknown"}`,
-                inline: false
+                inline: true
+            },
+            {
+                name: matchedAccounts.length === 1 ? "🕵️ Matched Account" : "🕵️ Matched Accounts",
+                value: matchedValue || "Unknown",
+                inline: true
             },
             {
                 name: "📊 Match Details",
@@ -412,24 +431,6 @@ function buildAltAlertEmbed(current, matches) {
                 inline: false
             }
         );
-
-    const limitedMatches = matchedAccounts.slice(0, 20);
-
-    for (const match of limitedMatches) {
-        embed.addFields({
-            name: `🕵️ ${match.last_name || "Unknown"}`,
-            value:
-                `🎮 **Name:** ${playerLink(match.last_name, match.cftools_id)}\n` +
-                `🆔 **CFTools:** ${idLink(match.cftools_id, match.cftools_id)}\n` +
-                `🔗 **Steam64:** ${idLink(match.steam64, match.cftools_id)}\n` +
-                `🌐 **IP:** \`${match.ip_masked || current.ip_masked}\`\n` +
-                `🏢 **Provider:** ${match.provider || current.provider || "Unknown"}\n` +
-                `📍 **Country:** ${match.country_name || match.country_code || current.country_name || "Unknown"}\n` +
-                `📅 **First Seen:** ${formatDate(match.first_seen)}\n` +
-                `📈 **Times Seen:** ${match.seen_count || 1}`,
-            inline: true
-        });
-    }
 
     if (matchedAccounts.length > limitedMatches.length) {
         embed.addFields({
