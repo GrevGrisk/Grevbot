@@ -1,6 +1,9 @@
 const { EmbedBuilder } = require("discord.js");
+const axios = require("axios");
 const pool = require("./db");
 const statsAlert = require("./statsAlertModule");
+
+const CF_BASE = "https://data.cftools.cloud";
 
 // ===== HELPERS =====
 
@@ -18,6 +21,92 @@ function extractCFID(link) {
 
 function buildProfileLink(cfid) {
     return `https://app.cftools.cloud/profile/${cfid}`;
+}
+
+function formatDate(value) {
+    if (!value) return "Unknown";
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Unknown";
+
+    return date.toISOString().split("T")[0];
+}
+
+async function getCFToken() {
+    const response = await axios.post(
+        `${CF_BASE}/v1/auth/register`,
+        {
+            application_id: process.env.CFTOOLS_APP_ID,
+            secret: process.env.CFTOOLS_APP_SECRET
+        },
+        {
+            headers: {
+                "User-Agent": process.env.CFTOOLS_APP_ID
+            }
+        }
+    );
+
+    return response.data.token;
+}
+
+async function getCFProfile(cfid) {
+    try {
+        const token = await getCFToken();
+
+        const response = await axios.get(
+            `${CF_BASE}/v1/player`,
+            {
+                headers: {
+                    "User-Agent": process.env.CFTOOLS_APP_ID,
+                    "Authorization": `Bearer ${token}`
+                },
+                params: {
+                    cftools_id: cfid
+                }
+            }
+        );
+
+        return response.data;
+    } catch (err) {
+        console.error("CF profile fetch error:", err.response?.data || err.message || err);
+        return null;
+    }
+}
+
+async function getKDStats(cfid) {
+    try {
+        const killsResult = await pool.query(`
+            SELECT COUNT(*)::int AS count
+            FROM player_deaths
+            WHERE killer = $1
+        `, [cfid]);
+
+        const deathsResult = await pool.query(`
+            SELECT COUNT(*)::int AS count
+            FROM player_deaths
+            WHERE victim = $1
+        `, [cfid]);
+
+        const kills = killsResult.rows[0]?.count || 0;
+        const deaths = deathsResult.rows[0]?.count || 0;
+
+        const kd = deaths > 0
+            ? (kills / deaths).toFixed(2)
+            : kills.toFixed(2);
+
+        return {
+            kills,
+            deaths,
+            kd
+        };
+    } catch (err) {
+        console.error("KD stats error:", err);
+        return {
+            kills: 0,
+            deaths: 0,
+            kd: "0.00"
+        };
+    }
 }
 
 // 🔥 LOS MAP LINK
@@ -188,6 +277,28 @@ async function handleProfile(interaction) {
             };
         }
 
+        const profile = await getCFProfile(cfid);
+        const kdStats = await getKDStats(cfid);
+
+        const steamCreated =
+            profile?.persona?.profile?.created_at ||
+            profile?.persona?.profile?.timecreated ||
+            profile?.persona?.created_at ||
+            profile?.profile?.created_at ||
+            null;
+
+        const dayzSeconds =
+            profile?.info?.radar?.indicators?.playtime_total ||
+            profile?.stats?.playtime ||
+            profile?.playtime ||
+            0;
+
+        const dayzHours = Math.round((dayzSeconds / 3600) * 10) / 10;
+
+        const previousBans =
+            profile?.info?.ban_count ||
+            0;
+
         const brain = stats.brain || 0;
         const head = stats.head || 0;
         const torso = stats.torso || 0;
@@ -237,6 +348,16 @@ async function handleProfile(interaction) {
             )
             .addFields(
                 {
+                    name: "🧠 Player Intel",
+                    value:
+                        `📅 **Steam account created:** ${formatDate(steamCreated)}\n` +
+                        `⏱️ **DayZ hours:** ${dayzHours}\n` +
+                        `🚫 **Previous bans:** ${previousBans}\n` +
+                        `⚔️ **Kills:** ${kdStats.kills}\n` +
+                        `💀 **Deaths:** ${kdStats.deaths}\n` +
+                        `📈 **K/D:** ${kdStats.kd}`
+                },
+                {
                     name: "📊 Total Shots Hit",
                     value: `**${totalShots}**\n`
                 },
@@ -263,6 +384,7 @@ async function handleProfile(interaction) {
 
     } catch (err) {
         console.error("Profile error:", err);
+
         await interaction.reply({
             content: "Feil ved henting av stats.",
             ephemeral: true
