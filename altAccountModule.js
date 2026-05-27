@@ -22,6 +22,16 @@ function subnetIP(ip) {
     return `${parts[0]}.${parts[1]}.${parts[2]}.xxx`;
 }
 
+function getDayZHours(player) {
+    const seconds =
+        player?.info?.radar?.indicators?.playtime_total ||
+        player?.stats?.playtime ||
+        player?.playtime ||
+        0;
+
+    return Math.round((seconds / 3600) * 10) / 10;
+}
+
 function hashIP(ip) {
     if (!process.env.IP_HASH_SECRET) {
         console.error("Missing IP_HASH_SECRET environment variable");
@@ -62,31 +72,6 @@ function formatDateTime(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "Unknown";
     return date.toISOString().replace("T", " ").split(".")[0] + " UTC";
-}
-
-function extractDayZHours(player) {
-    const seconds =
-        player?.info?.radar?.indicators?.playtime_total ||
-        player?.radar?.indicators?.playtime_total ||
-        player?.stats?.playtime ||
-        player?.stats?.playtime_total ||
-        player?.playtime ||
-        player?.playtime_total ||
-        player?.data?.info?.radar?.indicators?.playtime_total ||
-        player?.data?.radar?.indicators?.playtime_total ||
-        player?.data?.stats?.playtime ||
-        player?.data?.stats?.playtime_total ||
-        player?.data?.playtime ||
-        player?.data?.playtime_total ||
-        player?.player?.info?.radar?.indicators?.playtime_total ||
-        player?.player?.radar?.indicators?.playtime_total ||
-        player?.player?.stats?.playtime ||
-        player?.player?.stats?.playtime_total ||
-        player?.player?.playtime ||
-        player?.player?.playtime_total ||
-        0;
-
-    return Math.round((Number(seconds || 0) / 3600) * 10) / 10;
 }
 
 async function getCFToolsToken() {
@@ -176,7 +161,7 @@ async function getOrCreatePlayer(player) {
     const cftoolsId = player.cftools_id || null;
     const beguid = player.beguid || null;
     const name = player.player_name || null;
-    const dayzHours = Number(player.dayz_hours || 0);
+    const dayzHours = player.dayz_hours || 0;
 
     const existing = await pool.query(`
         SELECT id FROM alt_players
@@ -734,7 +719,7 @@ async function syncAndDetect(client) {
             cftools_id: p?.cftools_id || null,
             beguid: p?.gamedata?.beguid || p?.gamedata?.be_guid || null,
             player_name: p?.gamedata?.player_name || p?.persona?.profile?.name || "Unknown",
-            dayz_hours: extractDayZHours(p),
+            dayz_hours: getDayZHours(p),
             ip,
             ip_masked: maskIP(ip),
             ip_subnet: subnetIP(ip),
