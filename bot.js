@@ -34,6 +34,7 @@ const CLIENT_ID = process.env.CLIENT_ID;
 const INPUT_CHANNEL_ID = "1483550858099560502";
 const OUTPUT_CHANNEL_ID = "1492666634190454864";
 const ALERT_CHANNEL_ID = "1478757145288900679";
+const BAN_FEED_CHANNEL_ID = "1508587026302107678";
 
 const EXCLUDED_WEAPONS = ["TriDagger"];
 
@@ -321,11 +322,13 @@ client.on("interactionCreate", async interaction => {
 async function processInputMessage(msg) {
     if (msg.author.id === client.user.id) return;
 
-    try {
-        const handledBanWebhook = await altAccountModule.handleBanWebhookMessage(msg.content);
-        if (handledBanWebhook) return;
-    } catch (err) {
-        console.error("Ban webhook parse error:", err);
+    if (msg.channel.id === BAN_FEED_CHANNEL_ID) {
+        try {
+            const handledBanWebhook = await altAccountModule.handleBanWebhookMessage(msg.content);
+            if (handledBanWebhook) return;
+        } catch (err) {
+            console.error("Ban webhook parse error:", err);
+        }
     }
 
     if (msg.channel.id !== INPUT_CHANNEL_ID) return;
