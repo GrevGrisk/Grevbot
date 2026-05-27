@@ -6,6 +6,8 @@ const pool = require("./db");
 const CF_BASE = "https://data.cftools.cloud";
 const BAN_EVASION_WINDOW_HOURS = 3;
 
+const recentBansBySteam64 = new Map();
+
 function maskIP(ip) {
     if (!ip) return "Unknown";
     const parts = ip.split(".");
@@ -58,6 +60,27 @@ function formatDate(value) {
 function formatDateTime(value) {
     if (!value) return "Unknown";
     return new Date(value).toISOString().replace("T", " ").split(".")[0] + " UTC";
+}
+
+function isRecentBan(steam64) {
+    const ban = recentBansBySteam64.get(steam64);
+    if (!ban) return false;
+
+    const ageMs = Date.now() - ban.timestamp;
+    return ageMs <= BAN_EVASION_WINDOW_HOURS * 60 * 60 * 1000;
+}
+
+function getRecentBanInfo(steam64) {
+    return recentBansBySteam64.get(steam64) || null;
+}
+
+function cleanupRecentBans() {
+    for (const [steam64, ban] of recentBansBySteam64.entries()) {
+        const ageMs = Date.now() - ban.timestamp;
+        if (ageMs > BAN_EVASION_WINDOW_HOURS * 60 * 60 * 1000) {
+            recentBansBySteam64.delete(steam64);
+        }
+    }
 }
 
 async function getCFToolsToken() {
@@ -161,6 +184,49 @@ async function checkBanlistsForCftoolsId(cftoolsId) {
     };
 }
 
+function parseBanExecutedMessage(content) {
+    if (!content || !content.startsWith("BAN_EXECUTED")) return null;
+
+    const parts = content.split("|").map(p => p.trim());
+    const data = {};
+
+    for (const part of parts) {
+        if (part === "BAN_EXECUTED") continue;
+
+        const index = part.indexOf("=");
+        if (index === -1) continue;
+
+        const key = part.slice(0, index).trim().toLowerCase();
+        const value = part.slice(index + 1).trim();
+
+        data[key] = value;
+    }
+
+    if (!data.steam64) return null;
+
+    return {
+        name: data.name || null,
+        steam64: data.steam64,
+        reason: data.reason || "Unknown"
+    };
+}
+
+async function handleBanWebhookMessage(content) {
+    const ban = parseBanExecutedMessage(content);
+    if (!ban) return false;
+
+    const marked = await markPlayerBannedBySteam64(ban.steam64, ban);
+
+    console.log("BAN_EXECUTED parsed:", {
+        name: ban.name,
+        steam64: ban.steam64,
+        reason: ban.reason,
+        marked
+    });
+
+    return true;
+}
+
 async function getOrCreatePlayer(player) {
     const steam64 = player.steam64;
     const cftoolsId = player.cftools_id || null;
@@ -224,6 +290,8 @@ async function findPreviousIpMatches(ipHash, steam64) {
 async function findSubnetBanEvasionMatches(data) {
     if (!data.ip_subnet || !data.provider) return [];
 
+    cleanupRecentBans();
+
     const result = await pool.query(`
         SELECT
             ap.id AS player_id,
@@ -247,16 +315,14 @@ async function findSubnetBanEvasionMatches(data) {
           AND LOWER(ail.provider) = LOWER($2)
           AND ap.steam64 != $3
           AND ail.banned_player = true
-          AND ail.last_ban_seen IS NOT NULL
-          AND ail.last_ban_seen >= NOW() - INTERVAL '3 hours'
-        ORDER BY ail.last_ban_seen DESC
+        ORDER BY ail.last_seen DESC
     `, [
         data.ip_subnet,
         data.provider,
         data.steam64
     ]);
 
-    return result.rows;
+    return result.rows.filter(row => isRecentBan(row.steam64));
 }
 
 async function saveIpLink(playerId, ipHash, data) {
@@ -326,9 +392,9 @@ async function altCaseExists(currentPlayerId, matchedPlayerId, reason = "Shared 
     const result = await pool.query(`
         SELECT id FROM alt_cases
         WHERE (
-            player_id = $1 AND matched_player_id = $2
-        ) OR (
-            player_id = $2 AND matched_player_id = $1
+            (player_id = $1 AND matched_player_id = $2)
+            OR
+            (player_id = $2 AND matched_player_id = $1)
         )
         AND reason = $3
         LIMIT 1
@@ -352,7 +418,7 @@ async function createAltCase(currentPlayerId, matchedPlayerId, reason = "Shared 
 
 async function markPlayerBannedByCFToolsId(cftoolsId) {
     const player = await pool.query(`
-        SELECT id FROM alt_players
+        SELECT id, steam64 FROM alt_players
         WHERE cftools_id = $1
         LIMIT 1
     `, [cftoolsId]);
@@ -361,10 +427,44 @@ async function markPlayerBannedByCFToolsId(cftoolsId) {
         return false;
     }
 
+    recentBansBySteam64.set(player.rows[0].steam64, {
+        timestamp: Date.now(),
+        reason: "Banlist match",
+        name: null
+    });
+
     await pool.query(`
         UPDATE alt_ip_links
         SET banned_player = true,
-            last_ban_seen = NOW()
+            last_ban_seen = CURRENT_DATE
+        WHERE player_id = $1
+    `, [player.rows[0].id]);
+
+    return true;
+}
+
+async function markPlayerBannedBySteam64(steam64, banData = {}) {
+    const player = await pool.query(`
+        SELECT id FROM alt_players
+        WHERE steam64 = $1
+        LIMIT 1
+    `, [steam64]);
+
+    recentBansBySteam64.set(steam64, {
+        timestamp: Date.now(),
+        reason: banData.reason || "Unknown",
+        name: banData.name || null
+    });
+
+    if (player.rows.length === 0) {
+        console.log("BAN_EXECUTED player not found in alt_players yet:", steam64);
+        return false;
+    }
+
+    await pool.query(`
+        UPDATE alt_ip_links
+        SET banned_player = true,
+            last_ban_seen = CURRENT_DATE
         WHERE player_id = $1
     `, [player.rows[0].id]);
 
@@ -414,6 +514,8 @@ function buildAltAlertEmbed(current, matched) {
 }
 
 function buildSubnetBanEvasionEmbed(current, matched) {
+    const banInfo = getRecentBanInfo(matched.steam64);
+
     return new EmbedBuilder()
         .setTitle("🟡 Possible Ban Evasion Pattern")
         .setColor(0xffcc00)
@@ -433,7 +535,7 @@ function buildSubnetBanEvasionEmbed(current, matched) {
             {
                 name: "🚫 Recently Banned Account",
                 value:
-                    `🎮 **Name:** ${playerLink(matched.last_name, matched.cftools_id)}\n` +
+                    `🎮 **Name:** ${playerLink(matched.last_name || banInfo?.name, matched.cftools_id)}\n` +
                     `🆔 **CFTools:** ${idLink(matched.cftools_id, matched.cftools_id)}\n` +
                     `🔗 **Steam64:** ${idLink(matched.steam64, matched.cftools_id)}\n` +
                     `🌐 **Previous IP Range:** \`${matched.ip_subnet || matched.ip_masked}\`\n` +
@@ -447,7 +549,8 @@ function buildSubnetBanEvasionEmbed(current, matched) {
                     `⚠️ **Type:** Same provider + same /24 IP range\n` +
                     `⏱️ **Ban Window:** Within ${BAN_EVASION_WINDOW_HOURS} hours\n` +
                     `🔥 **Confidence:** MEDIUM / HIGH\n` +
-                    `🚫 **Ban Seen:** ${formatDateTime(matched.last_ban_seen)}\n` +
+                    `🚫 **Ban Seen:** ${banInfo ? formatDateTime(banInfo.timestamp) : formatDateTime(matched.last_ban_seen)}\n` +
+                    `📝 **Ban Reason:** ${banInfo?.reason || "Unknown"}\n` +
                     `📈 **Previous IP Times Seen:** ${matched.seen_count || 1}`,
                 inline: false
             }
@@ -516,6 +619,12 @@ async function sendTestAltAlert(client) {
         seen_count: 14,
         last_ban_seen: new Date()
     };
+
+    recentBansBySteam64.set(matched.steam64, {
+        timestamp: Date.now(),
+        reason: "Cheater - BE ban",
+        name: "SneakyAlt"
+    });
 
     await channel.send({ embeds: [buildAltAlertEmbed(current, matched)] });
     await channel.send({ embeds: [buildSubnetBanEvasionEmbed(current, matched)] });
@@ -724,5 +833,7 @@ module.exports = {
     sendTestAltAlert,
     manualAltCheck,
     markPlayerBannedByCFToolsId,
-    checkBanlistsForCftoolsId
+    markPlayerBannedBySteam64,
+    checkBanlistsForCftoolsId,
+    handleBanWebhookMessage
 };
