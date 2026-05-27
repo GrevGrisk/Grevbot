@@ -4,6 +4,7 @@ const pool = require("./db");
 const statsAlert = require("./statsAlertModule");
 
 const STEAM_API_BASE = "https://api.steampowered.com";
+const CF_BASE = "https://data.cftools.cloud";
 
 // ===== HELPERS =====
 
@@ -66,6 +67,74 @@ async function getSteamAccountCreated(steam64) {
         console.error("Steam API timecreated fetch error:", err.response?.data || err.message || err);
         return null;
     }
+}
+
+async function getCFToken() {
+    const response = await axios.post(
+        `${CF_BASE}/v1/auth/register`,
+        {
+            application_id: process.env.CFTOOLS_APP_ID,
+            secret: process.env.CFTOOLS_APP_SECRET
+        },
+        {
+            headers: {
+                "User-Agent": process.env.CFTOOLS_APP_ID
+            }
+        }
+    );
+
+    return response.data.token;
+}
+
+async function getCFServerPlayer(cfid) {
+    if (!cfid) return null;
+
+    try {
+        const token = await getCFToken();
+
+        const response = await axios.get(
+            `${CF_BASE}/v2/server/${process.env.CFTOOLS_SERVER_API_ID}/player`,
+            {
+                headers: {
+                    "User-Agent": process.env.CFTOOLS_APP_ID,
+                    "Authorization": `Bearer ${token}`
+                },
+                params: {
+                    cftools_id: cfid
+                }
+            }
+        );
+
+        return response.data;
+    } catch (err) {
+        console.error("CF server player fetch error:", err.response?.data || err.message || err);
+        return null;
+    }
+}
+
+function extractDayZHours(player) {
+    const seconds =
+        player?.info?.radar?.indicators?.playtime_total ||
+        player?.radar?.indicators?.playtime_total ||
+        player?.stats?.playtime ||
+        player?.stats?.playtime_total ||
+        player?.playtime ||
+        player?.playtime_total ||
+        player?.data?.info?.radar?.indicators?.playtime_total ||
+        player?.data?.radar?.indicators?.playtime_total ||
+        player?.data?.stats?.playtime ||
+        player?.data?.stats?.playtime_total ||
+        player?.data?.playtime ||
+        player?.data?.playtime_total ||
+        player?.player?.info?.radar?.indicators?.playtime_total ||
+        player?.player?.radar?.indicators?.playtime_total ||
+        player?.player?.stats?.playtime ||
+        player?.player?.stats?.playtime_total ||
+        player?.player?.playtime ||
+        player?.player?.playtime_total ||
+        0;
+
+    return Math.round((Number(seconds || 0) / 3600) * 10) / 10;
 }
 
 // 🔥 LOS MAP LINK
@@ -318,6 +387,21 @@ async function handleProfile(interaction) {
                     SET steam_created = COALESCE(steam_created, $1)
                     WHERE steam64 = $2
                 `, [steamCreated, altPlayer.steam64]);
+            }
+        }
+
+        if ((!dayzHours || Number(dayzHours) === 0) && altPlayer?.steam64) {
+            const serverPlayer = await getCFServerPlayer(cfid);
+            const liveDayzHours = extractDayZHours(serverPlayer);
+
+            if (liveDayzHours > 0) {
+                dayzHours = liveDayzHours;
+
+                await pool.query(`
+                    UPDATE alt_players
+                    SET dayz_hours = $1
+                    WHERE steam64 = $2
+                `, [dayzHours, altPlayer.steam64]);
             }
         }
 
