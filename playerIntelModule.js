@@ -1,5 +1,6 @@
 const axios = require("axios");
-const { EmbedBuilder } = require("discord.js");
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const pool = require("./db");
 
 const CF_BASE = "https://data.cftools.cloud";
 const PLAYER_INTEL_CHANNEL_ID = "1508549810482057216";
@@ -164,6 +165,91 @@ function basePlayerField(data) {
     );
 }
 
+function buildAlertButtons(steam64, alertType) {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`intel_disable:${alertType}:${steam64}`)
+            .setLabel("Deactivate alert")
+            .setStyle(ButtonStyle.Danger),
+
+        new ButtonBuilder()
+            .setCustomId(`intel_enable:${alertType}:${steam64}`)
+            .setLabel("Reactivate alert")
+            .setStyle(ButtonStyle.Success)
+    );
+}
+
+async function isSuppressed(steam64, alertType) {
+    const result = await pool.query(`
+        SELECT id FROM player_intel_suppression
+        WHERE steam64 = $1
+          AND alert_type = $2
+        LIMIT 1
+    `, [steam64, alertType]);
+
+    return result.rows.length > 0;
+}
+
+async function suppressAlert(steam64, alertType) {
+    await pool.query(`
+        INSERT INTO player_intel_suppression
+        (steam64, alert_type)
+        VALUES ($1, $2)
+        ON CONFLICT (steam64, alert_type) DO NOTHING
+    `, [steam64, alertType]);
+}
+
+async function unsuppressAlert(steam64, alertType) {
+    await pool.query(`
+        DELETE FROM player_intel_suppression
+        WHERE steam64 = $1
+          AND alert_type = $2
+    `, [steam64, alertType]);
+}
+
+async function handleIntelButton(interaction) {
+    const customId = interaction.customId || "";
+
+    if (!customId.startsWith("intel_disable:") && !customId.startsWith("intel_enable:")) {
+        return false;
+    }
+
+    const parts = customId.split(":");
+    const action = parts[0];
+    const alertType = parts[1];
+    const steam64 = parts[2];
+
+    if (!alertType || !steam64) {
+        await interaction.reply({
+            content: "Invalid player intel button data.",
+            ephemeral: true
+        });
+        return true;
+    }
+
+    if (action === "intel_disable") {
+        await suppressAlert(steam64, alertType);
+        await interaction.reply({
+            content: `Alert deactivated for Steam64 ${steam64} / ${alertType}.`,
+            ephemeral: true
+        });
+        return true;
+    }
+
+    if (action === "intel_enable") {
+        await unsuppressAlert(steam64, alertType);
+        sentAlerts.delete(`${alertType}:${steam64}`);
+
+        await interaction.reply({
+            content: `Alert reactivated for Steam64 ${steam64} / ${alertType}.`,
+            ephemeral: true
+        });
+        return true;
+    }
+
+    return false;
+}
+
 function buildNewSteamEmbed(data) {
     return new EmbedBuilder()
         .setTitle("🟢 New Steam Account Alert")
@@ -304,9 +390,26 @@ function isBrandNewSteamAccount(creationDate) {
     return ageDays <= 30;
 }
 
-async function sendEmbed(client, embed) {
+async function sendEmbed(client, embed, steam64, alertType) {
     const channel = await client.channels.fetch(PLAYER_INTEL_CHANNEL_ID);
-    await channel.send({ embeds: [embed] });
+    await channel.send({
+        embeds: [embed],
+        components: [buildAlertButtons(steam64, alertType)]
+    });
+}
+
+async function maybeSendAlert(client, data, alertType, embedBuilder) {
+    if (!data.steam64 || data.steam64 === "Unknown") return false;
+
+    const key = `${alertType}:${data.steam64}`;
+
+    if (sentAlerts.has(key)) return false;
+    if (await isSuppressed(data.steam64, alertType)) return false;
+
+    sentAlerts.add(key);
+    await sendEmbed(client, embedBuilder(data), data.steam64, alertType);
+
+    return true;
 }
 
 async function scanAndAlert(client) {
@@ -323,38 +426,30 @@ async function scanAndAlert(client) {
         checked++;
 
         if (isBrandNewSteamAccount(data.steamCreated)) {
-            const key = `newsteam:${data.steam64}`;
-            if (!sentAlerts.has(key)) {
-                sentAlerts.add(key);
-                await sendEmbed(client, buildNewSteamEmbed(data));
-                alerts++;
-            }
+            const sent = await maybeSendAlert(client, data, "newsteam", buildNewSteamEmbed);
+            if (sent) alerts++;
         }
 
         if (data.dayzHours > 0 && data.dayzHours < 5) {
-            const key = `lowhours:${data.steam64}`;
-            if (!sentAlerts.has(key)) {
-                sentAlerts.add(key);
-                await sendEmbed(client, buildLowHoursEmbed(data));
-                alerts++;
-            }
+            const sent = await maybeSendAlert(client, data, "lowhours", buildLowHoursEmbed);
+            if (sent) alerts++;
         }
 
         if (data.serverBanCount > 0) {
-            const key = `serverbans:${data.steam64}`;
-            if (!sentAlerts.has(key)) {
-                sentAlerts.add(key);
-                await sendEmbed(client, buildPreviousBansEmbed(data));
-                alerts++;
-            }
+            const sent = await maybeSendAlert(client, data, "serverbans", buildPreviousBansEmbed);
+            if (sent) alerts++;
         }
 
         const suspicion = calculateSuspicion(data);
         if (suspicion.trigger) {
             const key = `suspiciousstats:${data.steam64}`;
-            if (!sentAlerts.has(key)) {
+
+            if (!sentAlerts.has(key) && !(await isSuppressed(data.steam64, "suspiciousstats"))) {
                 sentAlerts.add(key);
-                await sendEmbed(client, buildSuspiciousStatsEmbed(data, suspicion));
+
+                const embed = buildSuspiciousStatsEmbed(data, suspicion);
+                await sendEmbed(client, embed, data.steam64, "suspiciousstats");
+
                 alerts++;
             }
         }
@@ -383,13 +478,14 @@ async function sendTestIntelAlerts(client) {
 
     const suspicion = calculateSuspicion(testData);
 
-    await sendEmbed(client, buildNewSteamEmbed(testData));
-    await sendEmbed(client, buildLowHoursEmbed(testData));
-    await sendEmbed(client, buildPreviousBansEmbed(testData));
-    await sendEmbed(client, buildSuspiciousStatsEmbed(testData, suspicion));
+    await sendEmbed(client, buildNewSteamEmbed(testData), testData.steam64, "newsteam");
+    await sendEmbed(client, buildLowHoursEmbed(testData), testData.steam64, "lowhours");
+    await sendEmbed(client, buildPreviousBansEmbed(testData), testData.steam64, "serverbans");
+    await sendEmbed(client, buildSuspiciousStatsEmbed(testData, suspicion), testData.steam64, "suspiciousstats");
 }
 
 module.exports = {
     scanAndAlert,
-    sendTestIntelAlerts
+    sendTestIntelAlerts,
+    handleIntelButton
 };
