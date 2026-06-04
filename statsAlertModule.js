@@ -188,7 +188,7 @@ async function checkPlayer(client, hit, stats) {
 
         let reason = null;
 
-        if (brainPct > 3) {
+        if (brainPct > 5) {
             reason = "This player has an elevated brainhit pattern";
         } else if (headPct > 20) {
             reason = "This player has an elevated headshot pattern";
