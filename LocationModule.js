@@ -90,9 +90,17 @@ function clean(value) {
     return String(value);
 }
 
-async function searchPlayersByLocation(nationality, hours) {
+function normalizeProvider(input) {
+    if (!input) return null;
+
+    const value = input.trim();
+    return value.length > 0 ? value : null;
+}
+
+async function searchPlayersByLocation(nationality, hours, provider) {
     const normalized = normalizeNationality(nationality);
     const countryCode = normalized.toUpperCase();
+    const providerFilter = normalizeProvider(provider);
 
     const result = await pool.query(`
         SELECT
@@ -111,13 +119,17 @@ async function searchPlayersByLocation(nationality, hours) {
         JOIN alt_players ap ON ap.id = ail.player_id
         WHERE ail.country_code = $1
           AND ail.last_seen >= NOW() - ($2 * INTERVAL '1 hour')
+          AND (
+              $3::text IS NULL
+              OR LOWER(ail.provider) LIKE LOWER('%' || $3 || '%')
+          )
         ORDER BY ail.last_seen DESC
-    `, [countryCode, hours]);
+    `, [countryCode, hours, providerFilter]);
 
     return result.rows;
 }
 
-function buildLocationEmbed(nationality, hours, rows, page) {
+function buildLocationEmbed(nationality, hours, provider, rows, page) {
     const totalRows = rows.length;
     const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
     const start = page * PAGE_SIZE;
@@ -126,6 +138,8 @@ function buildLocationEmbed(nationality, hours, rows, page) {
     const firstCountry = visibleRows[0] || rows[0] || {};
     const flag = countryFlag(firstCountry.country_code);
 
+    const providerText = normalizeProvider(provider) ? `\n🏢 **Provider filter:** ${clean(provider)}` : "";
+
     const embed = new EmbedBuilder()
         .setTitle("🌍 GrevBot location query")
         .setColor(0x2f80ed)
@@ -133,7 +147,8 @@ function buildLocationEmbed(nationality, hours, rows, page) {
             `🧭 **Nationality:** ${flag} ${nationality}\n` +
             `⏱️ **Time window:** Last ${hours} hour(s)\n` +
             `👥 **Results:** ${totalRows} player(s)\n` +
-            `📄 **Page:** ${page + 1}/${totalPages}`
+            `📄 **Page:** ${page + 1}/${totalPages}` +
+            providerText
         )
         .setFooter({ text: "GrevBot • Location query" })
         .setTimestamp();
@@ -141,7 +156,7 @@ function buildLocationEmbed(nationality, hours, rows, page) {
     if (totalRows === 0) {
         embed.addFields({
             name: "🔎 No results",
-            value: "No stored players matched that nationality in the selected time window."
+            value: "No stored players matched that nationality/provider in the selected time window."
         });
         return embed;
     }
@@ -207,11 +222,12 @@ async function handleLocation(interaction) {
 
         const nationality = interaction.options.getString("nationality");
         const hours = interaction.options.getInteger("hours");
+        const provider = interaction.options.getString("provider");
 
-        const rows = await searchPlayersByLocation(nationality, hours);
+        const rows = await searchPlayersByLocation(nationality, hours, provider);
         let page = 0;
 
-        const embed = buildLocationEmbed(nationality, hours, rows, page);
+        const embed = buildLocationEmbed(nationality, hours, provider, rows, page);
         const components = rows.length > PAGE_SIZE ? [buildButtons(page, rows.length)] : [];
 
         const message = await interaction.editReply({
@@ -245,7 +261,7 @@ async function handleLocation(interaction) {
             }
 
             await buttonInteraction.update({
-                embeds: [buildLocationEmbed(nationality, hours, rows, page)],
+                embeds: [buildLocationEmbed(nationality, hours, provider, rows, page)],
                 components: [buildButtons(page, rows.length)]
             });
         });
