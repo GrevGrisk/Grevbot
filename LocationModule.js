@@ -17,28 +17,28 @@ function normalizeNationality(input) {
     const lower = input.trim().toLowerCase();
 
     const aliases = {
-        norge: "norway",
-        norway: "norway",
+        norge: "no",
+        norway: "no",
         no: "no",
-        sverige: "sweden",
-        sweden: "sweden",
+        sverige: "se",
+        sweden: "se",
         se: "se",
-        danmark: "denmark",
-        denmark: "denmark",
+        danmark: "dk",
+        denmark: "dk",
         dk: "dk",
-        tyskland: "germany",
-        germany: "germany",
+        tyskland: "de",
+        germany: "de",
         de: "de",
-        frankrike: "france",
-        france: "france",
+        frankrike: "fr",
+        france: "fr",
         fr: "fr",
-        finland: "finland",
+        finland: "fi",
         fi: "fi",
-        polen: "poland",
-        poland: "poland",
+        polen: "pl",
+        poland: "pl",
         pl: "pl",
-        nederland: "netherlands",
-        netherlands: "netherlands",
+        nederland: "nl",
+        netherlands: "nl",
         nl: "nl",
         uk: "gb",
         gb: "gb",
@@ -74,6 +74,14 @@ function clean(value) {
 
 async function searchPlayersByLocation(nationality, hours) {
     const normalized = normalizeNationality(nationality);
+    const countryCode = normalized.toUpperCase();
+
+    console.log("Location query:", {
+        nationality,
+        normalized,
+        countryCode,
+        hours
+    });
 
     const result = await pool.query(`
         SELECT
@@ -90,13 +98,12 @@ async function searchPlayersByLocation(nationality, hours) {
             ail.seen_count
         FROM alt_ip_links ail
         JOIN alt_players ap ON ap.id = ail.player_id
-        WHERE (
-            LOWER(ail.country_name) = LOWER($1)
-            OR LOWER(ail.country_code) = LOWER($1)
-        )
+        WHERE ail.country_code = $1
           AND ail.last_seen >= NOW() - ($2 * INTERVAL '1 hour')
         ORDER BY ail.last_seen DESC
-    `, [normalized, hours]);
+    `, [countryCode, hours]);
+
+    console.log("Rows found:", result.rows.length);
 
     return {
         rows: result.rows.slice(0, 5),
