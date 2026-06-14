@@ -86,7 +86,6 @@ async function searchPlayersByLocation(nationality, hours) {
             ail.provider,
             ail.country_code,
             ail.country_name,
-            ail.first_seen,
             ail.last_seen,
             ail.seen_count
         FROM alt_ip_links ail
@@ -100,22 +99,20 @@ async function searchPlayersByLocation(nationality, hours) {
     `, [normalized, hours]);
 
     return {
-        normalized,
-        rows: result.rows.slice(0, 25),
+        rows: result.rows.slice(0, 5),
         totalRows: result.rows.length
     };
 }
 
-function buildLocationEmbed(nationality, normalized, hours, rows, totalRows) {
+function buildLocationEmbed(nationality, hours, rows, totalRows) {
     const embed = new EmbedBuilder()
         .setTitle("🌍 Location search")
         .setColor(0x2f80ed)
         .setDescription(
             `**Nationality:** ${nationality}\n` +
-            `**Normalized:** ${normalized}\n` +
             `**Time window:** Last ${hours} hour(s)\n` +
-            `**Results shown:** ${rows.length} player(s)\n` +
-            `**Total matches:** ${totalRows} player(s)`
+            `**Results:** ${totalRows} player(s)\n` +
+            `**Showing:** ${rows.length} player(s)`
         )
         .setFooter({ text: "GrevBot • Location search" })
         .setTimestamp();
@@ -136,14 +133,20 @@ function buildLocationEmbed(nationality, normalized, hours, rows, totalRows) {
             name: `👤 ${row.last_name || "Unknown"}`,
             value:
                 `**Player:** ${playerLink(row.last_name, row.cftools_id)}\n` +
-                `**CF Tools ID:** ${clean(row.cftools_id)}\n` +
-                `**Steam64:** ${clean(row.steam64)}\n` +
-                `**IP:** ${clean(ipText)}\n` +
+                `**Steam64:** \`${clean(row.steam64)}\`\n` +
+                `**IP:** \`${clean(ipText)}\`\n` +
                 `**Provider:** ${clean(row.provider)}\n` +
                 `**Country:** ${clean(countryText)}\n` +
-                `**Attempted login:** ${formatDate(row.last_seen)}\n` +
+                `**Login:** ${formatDate(row.last_seen)}\n` +
                 `**Seen:** ${clean(row.seen_count)} time(s)`,
             inline: false
+        });
+    }
+
+    if (totalRows > rows.length) {
+        embed.addFields({
+            name: "More results",
+            value: `Showing first ${rows.length} of ${totalRows}. Use a shorter time window to narrow the search.`
         });
     }
 
@@ -159,24 +162,15 @@ async function handleLocation(interaction) {
         const nationality = interaction.options.getString("nationality");
         const hours = interaction.options.getInteger("hours");
 
-        const { normalized, rows, totalRows } = await searchPlayersByLocation(nationality, hours);
-
-        const embed = buildLocationEmbed(
-            nationality,
-            normalized,
-            hours,
-            rows,
-            totalRows
-        );
+        const { rows, totalRows } = await searchPlayersByLocation(nationality, hours);
+        const embed = buildLocationEmbed(nationality, hours, rows, totalRows);
 
         await interaction.editReply({ embeds: [embed] });
     } catch (err) {
         console.error("Location search error:", err);
 
         try {
-            const message =
-                "Location search failed. Check Railway logs.\n" +
-                `Error: ${err.message || err}`;
+            const message = `Location search failed. Error: ${err.message || err}`;
 
             if (interaction.deferred || interaction.replied) {
                 await interaction.editReply(message);
