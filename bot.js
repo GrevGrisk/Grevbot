@@ -19,6 +19,7 @@ const statsAlert = require("./statsAlertModule");
 const testAlertCommand = require("./testalert");
 const altAccountModule = require("./altAccountModule");
 const playerIntelModule = require("./playerIntelModule");
+const locationModule = require("./LocationModule");
 
 const client = new Client({
     intents: [
@@ -86,6 +87,22 @@ const commands = [
             option.setName("cftools_id")
                 .setDescription("CFTools ID")
                 .setRequired(true)
+        ),
+
+    new SlashCommandBuilder()
+        .setName("location")
+        .setDescription("Find players by nationality and time window")
+        .addStringOption(option =>
+            option.setName("nationality")
+                .setDescription("Country name or code")
+                .setRequired(true)
+        )
+        .addIntegerOption(option =>
+            option.setName("hours")
+                .setDescription("How many hours back to search")
+                .setRequired(true)
+                .setMinValue(1)
+                .setMaxValue(720)
         )
 ].map(cmd => cmd.toJSON());
 
@@ -239,6 +256,10 @@ client.on("interactionCreate", async interaction => {
             console.error("Test player intel error:", err);
             await interaction.editReply("Failed to send test player intel alerts.");
         }
+    }
+
+    if (interaction.commandName === "location") {
+        await locationModule.handleLocation(interaction);
     }
 
     if (interaction.commandName === "altcheck") {
