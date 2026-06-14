@@ -104,6 +104,11 @@ const commands = [
                 .setMinValue(1)
                 .setMaxValue(720)
         )
+        .addStringOption(option =>
+            option.setName("provider")
+                .setDescription("Optional provider filter")
+                .setRequired(false)
+        )
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
