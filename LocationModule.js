@@ -59,11 +59,14 @@ function formatDate(value) {
     if (Number.isNaN(date.getTime())) return String(value);
 
     return date.toLocaleString("no-NO", {
+        timeZone: "Europe/Oslo",
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",
-        minute: "2-digit"
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
     });
 }
 
@@ -75,13 +78,6 @@ function clean(value) {
 async function searchPlayersByLocation(nationality, hours) {
     const normalized = normalizeNationality(nationality);
     const countryCode = normalized.toUpperCase();
-
-    console.log("Location query:", {
-        nationality,
-        normalized,
-        countryCode,
-        hours
-    });
 
     const result = await pool.query(`
         SELECT
@@ -102,8 +98,6 @@ async function searchPlayersByLocation(nationality, hours) {
           AND ail.last_seen >= NOW() - ($2 * INTERVAL '1 hour')
         ORDER BY ail.last_seen DESC
     `, [countryCode, hours]);
-
-    console.log("Rows found:", result.rows.length);
 
     return {
         rows: result.rows.slice(0, 5),
@@ -144,8 +138,7 @@ function buildLocationEmbed(nationality, hours, rows, totalRows) {
                 `**IP:** \`${clean(ipText)}\`\n` +
                 `**Provider:** ${clean(row.provider)}\n` +
                 `**Country:** ${clean(countryText)}\n` +
-                `**Login:** ${formatDate(row.last_seen)}\n` +
-                `**Seen:** ${clean(row.seen_count)} time(s)`,
+                `**Login:** ${formatDate(row.last_seen)}`,
             inline: false
         });
     }
@@ -176,19 +169,15 @@ async function handleLocation(interaction) {
     } catch (err) {
         console.error("Location search error:", err);
 
-        try {
-            const message = `Location search failed. Error: ${err.message || err}`;
+        const message = `Location search failed. Error: ${err.message || err}`;
 
-            if (interaction.deferred || interaction.replied) {
-                await interaction.editReply(message);
-            } else {
-                await interaction.reply({
-                    content: message,
-                    ephemeral: true
-                });
-            }
-        } catch (replyErr) {
-            console.error("Failed to send location error reply:", replyErr);
+        if (interaction.deferred || interaction.replied) {
+            await interaction.editReply(message);
+        } else {
+            await interaction.reply({
+                content: message,
+                ephemeral: true
+            });
         }
     }
 }
