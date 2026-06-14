@@ -137,17 +137,20 @@ function buildLocationEmbed(nationality, hours, provider, rows, page) {
 
     const firstCountry = visibleRows[0] || rows[0] || {};
     const flag = countryFlag(firstCountry.country_code);
+    const providerFilter = normalizeProvider(provider);
 
-    const providerText = normalizeProvider(provider) ? `\n🏢 **Provider filter:** ${clean(provider)}` : "";
+    const providerText = providerFilter
+        ? `\n**🏢 Provider filter:** ${clean(providerFilter)}`
+        : "";
 
     const embed = new EmbedBuilder()
         .setTitle("🌍 GrevBot location query")
         .setColor(0x2f80ed)
         .setDescription(
-            `🧭 **Nationality:** ${flag} ${nationality}\n` +
-            `⏱️ **Time window:** Last ${hours} hour(s)\n` +
-            `👥 **Results:** ${totalRows} player(s)\n` +
-            `📄 **Page:** ${page + 1}/${totalPages}` +
+            `**🌐 Nationality:** ${flag} ${nationality}\n` +
+            `**⏱️ Time window:** Last ${hours} hour(s)\n` +
+            `**👥 Results:** ${totalRows} player(s)\n` +
+            `**📄 Page:** ${page + 1}/${totalPages}` +
             providerText
         )
         .setFooter({ text: "GrevBot • Location query" })
@@ -166,8 +169,9 @@ function buildLocationEmbed(nationality, hours, provider, rows, page) {
         const countryText = `${countryFlag(row.country_code)} ${row.country_name || row.country_code || "Unknown"}`;
 
         embed.addFields({
-            name: `👤 ${playerLink(row.last_name, row.cftools_id)}`,
+            name: `👤 ${row.last_name || "Unknown"}`,
             value:
+                `🔗 **Profile:** ${playerLink(row.last_name, row.cftools_id)}\n` +
                 `🎮 **Steam64:** \`${clean(row.steam64)}\`\n` +
                 `🌐 **IP:** \`${clean(ipText)}\`\n` +
                 `🏢 **Provider:** ${clean(row.provider)}\n` +
