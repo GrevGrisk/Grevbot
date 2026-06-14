@@ -2,9 +2,7 @@ const { EmbedBuilder } = require("discord.js");
 const pool = require("./db");
 
 function cfProfileUrl(cftoolsId) {
-    return cftoolsId
-        ? `https://app.cftools.cloud/profile/${cftoolsId}`
-        : null;
+    return cftoolsId ? `https://app.cftools.cloud/profile/${cftoolsId}` : null;
 }
 
 function playerLink(name, cftoolsId) {
@@ -16,8 +14,7 @@ function playerLink(name, cftoolsId) {
 function normalizeNationality(input) {
     if (!input) return "";
 
-    const value = input.trim();
-    const lower = value.toLowerCase();
+    const lower = input.trim().toLowerCase();
 
     const aliases = {
         norge: "norway",
@@ -102,17 +99,23 @@ async function searchPlayersByLocation(nationality, hours) {
         ORDER BY ail.last_seen DESC
     `, [normalized, hours]);
 
-    return result.rows.slice(0, 25);
+    return {
+        normalized,
+        rows: result.rows.slice(0, 25),
+        totalRows: result.rows.length
+    };
 }
 
-function buildLocationEmbed(nationality, hours, rows) {
+function buildLocationEmbed(nationality, normalized, hours, rows, totalRows) {
     const embed = new EmbedBuilder()
         .setTitle("🌍 Location search")
         .setColor(0x2f80ed)
         .setDescription(
             `**Nationality:** ${nationality}\n` +
+            `**Normalized:** ${normalized}\n` +
             `**Time window:** Last ${hours} hour(s)\n` +
-            `**Results:** ${rows.length} player(s)`
+            `**Results shown:** ${rows.length} player(s)\n` +
+            `**Total matches:** ${totalRows} player(s)`
         )
         .setFooter({ text: "GrevBot • Location search" })
         .setTimestamp();
@@ -156,19 +159,30 @@ async function handleLocation(interaction) {
         const nationality = interaction.options.getString("nationality");
         const hours = interaction.options.getInteger("hours");
 
-        const rows = await searchPlayersByLocation(nationality, hours);
-        const embed = buildLocationEmbed(nationality, hours, rows);
+        const { normalized, rows, totalRows } = await searchPlayersByLocation(nationality, hours);
+
+        const embed = buildLocationEmbed(
+            nationality,
+            normalized,
+            hours,
+            rows,
+            totalRows
+        );
 
         await interaction.editReply({ embeds: [embed] });
     } catch (err) {
         console.error("Location search error:", err);
 
         try {
+            const message =
+                "Location search failed. Check Railway logs.\n" +
+                `Error: ${err.message || err}`;
+
             if (interaction.deferred || interaction.replied) {
-                await interaction.editReply("Location search failed. Check Railway logs.");
+                await interaction.editReply(message);
             } else {
                 await interaction.reply({
-                    content: "Location search failed. Check Railway logs.",
+                    content: message,
                     ephemeral: true
                 });
             }
