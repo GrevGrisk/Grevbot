@@ -234,7 +234,7 @@ async function saveIpLink(playerId, ipHash, data) {
     if (existing.rows.length > 0) {
         await pool.query(`
             UPDATE alt_ip_links
-            SET last_seen = CURRENT_DATE,
+            SET last_seen = CURRENT_TIMESTAMP,
                 seen_count = seen_count + 1,
                 ip_masked = $1,
                 provider = $2,
@@ -267,7 +267,7 @@ async function saveIpLink(playerId, ipHash, data) {
                 ip_subnet,
                 banned_player
             )
-            VALUES ($1, $2, $3, CURRENT_DATE, CURRENT_DATE, 1, $4, $5, $6, $7, $8, false)
+            VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, $4, $5, $6, $7, $8, false)
         `, [
             playerId,
             ipHash,
