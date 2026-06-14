@@ -100,10 +100,9 @@ async function searchPlayersByLocation(nationality, hours) {
         )
           AND ail.last_seen >= NOW() - ($2 * INTERVAL '1 hour')
         ORDER BY ail.last_seen DESC
-        LIMIT 25
     `, [normalized, hours]);
 
-    return result.rows;
+    return result.rows.slice(0, 25);
 }
 
 function buildLocationEmbed(nationality, hours, rows) {
