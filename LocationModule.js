@@ -1,5 +1,13 @@
-const { EmbedBuilder } = require("discord.js");
+const {
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle
+} = require("discord.js");
+
 const pool = require("./db");
+
+const PAGE_SIZE = 5;
 
 function cfProfileUrl(cftoolsId) {
     return cftoolsId ? `https://app.cftools.cloud/profile/${cftoolsId}` : null;
@@ -52,6 +60,13 @@ function normalizeNationality(input) {
     return aliases[lower] || lower;
 }
 
+function countryFlag(code) {
+    if (!code || code.length !== 2) return "🌍";
+    return code
+        .toUpperCase()
+        .replace(/./g, char => String.fromCodePoint(127397 + char.charCodeAt()));
+}
+
 function formatDate(value) {
     if (!value) return "Unknown";
 
@@ -99,58 +114,89 @@ async function searchPlayersByLocation(nationality, hours) {
         ORDER BY ail.last_seen DESC
     `, [countryCode, hours]);
 
-    return {
-        rows: result.rows.slice(0, 5),
-        totalRows: result.rows.length
-    };
+    return result.rows;
 }
 
-function buildLocationEmbed(nationality, hours, rows, totalRows) {
+function buildLocationEmbed(nationality, hours, rows, page) {
+    const totalRows = rows.length;
+    const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+    const start = page * PAGE_SIZE;
+    const visibleRows = rows.slice(start, start + PAGE_SIZE);
+
+    const firstCountry = visibleRows[0] || rows[0] || {};
+    const flag = countryFlag(firstCountry.country_code);
+
     const embed = new EmbedBuilder()
-        .setTitle("🌍 Location search")
+        .setTitle("🌍 GrevBot location query")
         .setColor(0x2f80ed)
         .setDescription(
-            `**Nationality:** ${nationality}\n` +
-            `**Time window:** Last ${hours} hour(s)\n` +
-            `**Results:** ${totalRows} player(s)\n` +
-            `**Showing:** ${rows.length} player(s)`
+            `🧭 **Nationality:** ${flag} ${nationality}\n` +
+            `⏱️ **Time window:** Last ${hours} hour(s)\n` +
+            `👥 **Results:** ${totalRows} player(s)\n` +
+            `📄 **Page:** ${page + 1}/${totalPages}`
         )
-        .setFooter({ text: "GrevBot • Location search" })
+        .setFooter({ text: "GrevBot • Location query" })
         .setTimestamp();
 
-    if (rows.length === 0) {
+    if (totalRows === 0) {
         embed.addFields({
-            name: "No results",
+            name: "🔎 No results",
             value: "No stored players matched that nationality in the selected time window."
         });
         return embed;
     }
 
-    for (const row of rows) {
+    for (const row of visibleRows) {
         const ipText = row.ip_masked || row.ip_subnet || "Unknown";
-        const countryText = row.country_name || row.country_code || "Unknown";
+        const countryText = `${countryFlag(row.country_code)} ${row.country_name || row.country_code || "Unknown"}`;
 
         embed.addFields({
-            name: `👤 ${row.last_name || "Unknown"}`,
+            name: `👤 ${playerLink(row.last_name, row.cftools_id)}`,
             value:
-                `**Player:** ${playerLink(row.last_name, row.cftools_id)}\n` +
-                `**Steam64:** \`${clean(row.steam64)}\`\n` +
-                `**IP:** \`${clean(ipText)}\`\n` +
-                `**Provider:** ${clean(row.provider)}\n` +
-                `**Country:** ${clean(countryText)}\n` +
-                `**Login:** ${formatDate(row.last_seen)}`,
+                `🎮 **Steam64:** \`${clean(row.steam64)}\`\n` +
+                `🌐 **IP:** \`${clean(ipText)}\`\n` +
+                `🏢 **Provider:** ${clean(row.provider)}\n` +
+                `📍 **Country:** ${clean(countryText)}\n` +
+                `🕒 **Login:** ${formatDate(row.last_seen)}`,
             inline: false
         });
     }
 
-    if (totalRows > rows.length) {
+    if (totalRows > PAGE_SIZE) {
         embed.addFields({
-            name: "More results",
-            value: `Showing first ${rows.length} of ${totalRows}. Use a shorter time window to narrow the search.`
+            name: "📌 Navigation",
+            value: `Use the buttons below to browse all ${totalRows} result(s).`
         });
     }
 
     return embed;
+}
+
+function buildButtons(page, totalRows) {
+    const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId("location_prev")
+            .setLabel("Previous")
+            .setEmoji("⬅️")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(page <= 0),
+
+        new ButtonBuilder()
+            .setCustomId("location_page")
+            .setLabel(`Page ${page + 1}/${totalPages}`)
+            .setEmoji("📄")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true),
+
+        new ButtonBuilder()
+            .setCustomId("location_next")
+            .setLabel("Next")
+            .setEmoji("➡️")
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(page >= totalPages - 1)
+    );
 }
 
 async function handleLocation(interaction) {
@@ -162,17 +208,69 @@ async function handleLocation(interaction) {
         const nationality = interaction.options.getString("nationality");
         const hours = interaction.options.getInteger("hours");
 
-        const { rows, totalRows } = await searchPlayersByLocation(nationality, hours);
-        const embed = buildLocationEmbed(nationality, hours, rows, totalRows);
+        const rows = await searchPlayersByLocation(nationality, hours);
+        let page = 0;
 
-        await interaction.editReply({ embeds: [embed] });
+        const embed = buildLocationEmbed(nationality, hours, rows, page);
+        const components = rows.length > PAGE_SIZE ? [buildButtons(page, rows.length)] : [];
+
+        const message = await interaction.editReply({
+            embeds: [embed],
+            components
+        });
+
+        if (rows.length <= PAGE_SIZE) return;
+
+        const collector = message.createMessageComponentCollector({
+            time: 10 * 60 * 1000
+        });
+
+        collector.on("collect", async buttonInteraction => {
+            if (buttonInteraction.user.id !== interaction.user.id) {
+                await buttonInteraction.reply({
+                    content: "Only the user who ran the command can use these buttons.",
+                    ephemeral: true
+                });
+                return;
+            }
+
+            const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+
+            if (buttonInteraction.customId === "location_prev") {
+                page = Math.max(0, page - 1);
+            }
+
+            if (buttonInteraction.customId === "location_next") {
+                page = Math.min(totalPages - 1, page + 1);
+            }
+
+            await buttonInteraction.update({
+                embeds: [buildLocationEmbed(nationality, hours, rows, page)],
+                components: [buildButtons(page, rows.length)]
+            });
+        });
+
+        collector.on("end", async () => {
+            try {
+                await interaction.editReply({
+                    components: []
+                });
+            } catch (err) {
+                console.error("Failed to remove location buttons:", err);
+            }
+        });
+
     } catch (err) {
         console.error("Location search error:", err);
 
         const message = `Location search failed. Error: ${err.message || err}`;
 
         if (interaction.deferred || interaction.replied) {
-            await interaction.editReply(message);
+            await interaction.editReply({
+                content: message,
+                embeds: [],
+                components: []
+            });
         } else {
             await interaction.reply({
                 content: message,
