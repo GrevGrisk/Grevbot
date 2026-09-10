@@ -20,6 +20,7 @@ const testAlertCommand = require("./testalert");
 const altAccountModule = require("./altAccountModule");
 const playerIntelModule = require("./playerIntelModule");
 const locationModule = require("./LocationModule");
+const multiHitModule = require("./multiHitModule");
 
 const client = new Client({
     intents: [
@@ -381,6 +382,23 @@ async function processInputMessage(msg) {
     if (isHit) {
         const hit = parseHit(content);
         if (!hit) return;
+
+        if (alertChannel) {
+            try {
+                await multiHitModule.handleHit({
+                    hit,
+                    msg,
+                    alertChannel,
+                    coordsKiller,
+                    coordsVictim,
+                    zKiller,
+                    zVictim,
+                    time
+                });
+            } catch (err) {
+                console.error("Multi-hit alert error:", err);
+            }
+        }
 
         const key = hit.victimName.toLowerCase();
 
